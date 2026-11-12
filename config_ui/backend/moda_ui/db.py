@@ -25,7 +25,19 @@ def connect(path: Path | None = None) -> sqlite3.Connection:
 
 def init_schema(connection: sqlite3.Connection) -> None:
     connection.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
+    remove_cargo(connection)
     connection.commit()
+
+
+def remove_cargo(connection: sqlite3.Connection) -> None:
+    """Delete leftovers of the removed cargo (thùng hàng) analyzer."""
+    connection.execute("DELETE FROM analyzer_lanes WHERE analyzer = 'cargo'")
+    connection.execute("DELETE FROM analyzer_settings WHERE analyzer = 'cargo'")
+    connection.execute(
+        "DELETE FROM cameras WHERE purpose = 'cargo'"
+        " AND id NOT IN (SELECT camera_id FROM site_sources)"
+        " AND id NOT IN (SELECT camera_id FROM analyzer_lanes WHERE camera_id IS NOT NULL)"
+    )
 
 
 @contextmanager

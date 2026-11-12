@@ -19,7 +19,6 @@ const MAX_PLAYING = 4;
 const PURPOSE_LABEL: Record<Camera["purpose"], string> = {
   lane: "Làn xe",
   weight: "Cân",
-  cargo: "Hàng",
 };
 
 function LiveImage({
@@ -115,7 +114,6 @@ export default function LivePage() {
           options={[
             { value: "lane", label: "Làn xe" },
             { value: "weight", label: "Cân" },
-            { value: "cargo", label: "Hàng" },
             { value: "all", label: "Tất cả" },
           ]}
           onChange={setGroup}

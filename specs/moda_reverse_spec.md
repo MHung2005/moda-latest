@@ -12,7 +12,7 @@ kỳ được kích hoạt qua Kafka: đọc màn hình cân và nhận diện t
 - Python 3 trên NVIDIA Jetson.
 - NVIDIA DeepStream 6.3 cho phát hiện xe và biển số.
 - Kafka cho giao tiếp bất đồng bộ giữa detector và analyzer.
-- Ultralytics client gọi ba model trên NVIDIA Triton.
+- Ultralytics client gọi model `tram_can` trên NVIDIA Triton.
 - OpenCV cho RTSP capture, crop và ghi ảnh.
 
 ### Data flow
@@ -21,9 +21,7 @@ kỳ được kích hoạt qua Kafka: đọc màn hình cân và nhận diện t
 RTSP lane camera
   -> traffic_core / DeepStream
   -> Kafka: VehicleDetection_Gate1
-       |-> weight_reader -> tram_can -> Kafka: AnalysisResult_Gate1
-       `-> cargo_recognition -> thung_hang + rock_classify
-                            -> Kafka: AnalysisResult_Gate1
+       `-> weight_reader -> tram_can -> Kafka: AnalysisResult_Gate1
 ```
 
 Topic Kafka là seam triển khai. Việc analyzer không xuất hiện trong import graph của
@@ -56,49 +54,30 @@ Frame không phát hiện được chữ số shall không được tính là c�
 **OBS-WEIGHT-004**: Khi event mới của cùng làn đến, weight reader shall hủy lần đọc
 cũ trước khi bắt đầu lần đọc mới để tránh hai phiên cùng tranh camera/ROI.
 
-### Cargo recognition
-
-**OBS-CARGO-001**: Khi nhận event có `trigger_code` thuộc gate 1, cargo recognition
-shall đợi 5 giây, chụp camera hàng theo làn và thử tối đa ba lần.
-
-**OBS-CARGO-002**: Khi model `thung_hang` trả class hàng, analyzer shall trả trạng thái
-`rong`, `cohang`, `unknown` hoặc `phubat`.
-
-**OBS-CARGO-003**: Khi class hàng là `cohang`, analyzer shall quét các crop quanh tâm
-thùng và dùng `rock_classify` để chọn loại đá có confidence tốt nhất; `dasetbase` trên
-0,7 được ưu tiên. Các crop shall được gửi theo batch thay vì từng request tuần tự.
-
-**OBS-CARGO-004**: Khi có frame hợp lệ, cargo recognition shall lưu ảnh, đặt
-`analysis_cam_id=2`, `analysis_code=rock_gate1_<lane>` và phát kết quả lên
-`AnalysisResult_Gate1`.
-
 ## Observed Non-Functional Requirements
 
-- Hai analyzer phải dùng consumer group khác nhau để cả hai đều nhận mỗi trigger;
-  các replica cùng loại dùng chung group để tránh xử lý trùng.
+- Các replica của analyzer dùng chung consumer group để tránh xử lý trùng.
 - URL có credential, Kafka bootstrap và Triton URL phải đến từ environment.
 - Ảnh analyzer nằm dưới `/workspace/traffic` để tương thích volume legacy.
-- Model server dùng repository `models/triton` với ba model `tram_can`, `thung_hang`
-  và `rock_classify`.
+- Model server dùng repository `models/triton` với model `tram_can`.
 - Lỗi capture/inference của một event được log và không làm dừng consumer chính.
 - Input offset chỉ được commit sau khi output Kafka được broker xác nhận hoặc failure
   event đã được ghi vào `AnalysisFailure_Gate1`.
 - Delivery là at-least-once; consumer kết quả phải xử lý idempotent.
-- Số process và số event đang chờ phải bị chặn bởi `worker_count`; không được tạo queue
-  cargo không giới hạn.
+- Số process và số event đang chờ phải bị chặn bởi `worker_count`.
 - Mỗi job phải có deadline ngoài process để có thể kết thúc cả lời gọi native bị treo.
 - Detector và post-analysis phải có Compose độc lập để khởi động analyzer không kéo
   theo bốn camera DeepStream.
-- Deployment post-analysis phải kiểm tra biến Kafka/RTSP, đủ ba model Triton và cấu
+- Deployment post-analysis phải kiểm tra biến Kafka/RTSP, đủ model Triton và cấu
   hình Compose trước khi khởi động container.
 
 ## Inferred Acceptance Criteria
 
 ### AC-001: Fan-out trigger
 
-Given cả hai analyzer đang chạy với group ID khác nhau
+Given weight reader đang chạy
 When detector phát một event hợp lệ lên `VehicleDetection_Gate1`
-Then cả weight reader và cargo recognition đều nhận được event đó.
+Then weight reader nhận được event đó.
 
 ### AC-002: Preserve trigger contract
 
@@ -117,8 +96,8 @@ Then offset của trigger đó shall chưa được commit.
 - Model ONNX và Triton image cần được xác minh trên đúng JetPack của thiết bị.
 - Giá trị cân trên 100.000 vẫn được chia 10 theo logic legacy; quy tắc nghiệp vụ này
   chưa có tài liệu bên ngoài source.
-- Đường dẫn ảnh tuyệt đối của weight và tương đối của cargo được giữ để tương thích
-  consumer hiện hữu; cần xác nhận consumer cuối có phụ thuộc chính xác vào quy ước này.
+- Đường dẫn ảnh tuyệt đối của weight được giữ để tương thích consumer hiện hữu; cần
+  xác nhận consumer cuối có phụ thuộc chính xác vào quy ước này.
 - Ngưỡng, ROI và nhãn model cần được kiểm chứng bằng recording tại hiện trường.
 - Crash giữa output publish và input commit có thể tạo output lặp; chưa có Kafka
   transaction xuyên hai topic.

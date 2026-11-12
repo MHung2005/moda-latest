@@ -19,8 +19,6 @@ models/**/*.pt
 !models/object_detection/out_land2.onnx
 !models/plate_detection_with_logo/lp.onnx
 !models/plate_recognition/best224.onnx
-!models/triton/rock_classify/1/model.onnx
-!models/triton/thung_hang/1/model.onnx
 !models/triton/tram_can/1/model.onnx
 
 vehicle/

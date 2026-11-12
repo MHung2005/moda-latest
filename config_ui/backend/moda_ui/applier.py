@@ -137,8 +137,6 @@ def affected_services(
         common_new = {k: v for k, v in new.items() if k not in ("weight", "cargo")}
         if common_old != common_new or old.get("weight") != new.get("weight"):
             result[docker_ops.ANALYSIS].add("weight_reader")
-        if common_old != common_new or old.get("cargo") != new.get("cargo"):
-            result[docker_ops.ANALYSIS].add("cargo_recognition")
 
     for project in docker_ops.projects(settings):
         if project.env_file not in changed:

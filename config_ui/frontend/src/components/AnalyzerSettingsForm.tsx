@@ -13,7 +13,7 @@ const num = (label: string, field: string, min: number, step = 1) => (
   </Col>
 );
 
-/** Worker/retry/timeout block shared by weight and cargo (post_analysis/config.py). */
+/** Worker/retry/timeout block of the weight analyzer (post_analysis/config.py). */
 function AdvancedFields({ modelFields }: { modelFields: ReactNode }) {
   return (
     <Row gutter={12}>
@@ -42,7 +42,7 @@ function AdvancedFields({ modelFields }: { modelFields: ReactNode }) {
 }
 
 interface Props {
-  analyzer: "weight" | "cargo";
+  analyzer: "weight";
   settings: Record<string, unknown>;
   main: ReactNode;
   modelFields: ReactNode;

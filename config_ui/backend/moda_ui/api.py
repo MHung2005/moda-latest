@@ -251,7 +251,7 @@ def update_system_settings(data: schemas.SystemSettings, conn: sqlite3.Connectio
 def _analyzer_model(analyzer: str):
     model = schemas.ANALYZER_MODELS.get(analyzer)
     if model is None:
-        raise HTTPException(404, "analyzer phải là weight hoặc cargo")
+        raise HTTPException(404, "analyzer phải là weight")
     return model
 
 
@@ -275,12 +275,6 @@ def update_analyzer(analyzer: str, payload: dict, conn: sqlite3.Connection = Db,
 def upsert_weight_lane(trigger_code: str, data: schemas.WeightLaneIn, conn: sqlite3.Connection = Db, _: dict = Admin) -> dict:
     repo.upsert_weight_lane(conn, trigger_code, data)
     return {"lanes": repo.list_analyzer_lanes(conn, "weight")}
-
-
-@router.put("/analyzers/cargo/lanes/{trigger_code}")
-def upsert_cargo_lane(trigger_code: str, data: schemas.CargoLaneIn, conn: sqlite3.Connection = Db, _: dict = Admin) -> dict:
-    repo.upsert_cargo_lane(conn, trigger_code, data)
-    return {"lanes": repo.list_analyzer_lanes(conn, "cargo")}
 
 
 @router.delete("/analyzers/{analyzer}/lanes/{trigger_code}")

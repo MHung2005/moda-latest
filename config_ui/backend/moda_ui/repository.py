@@ -392,19 +392,6 @@ def upsert_weight_lane(conn: sqlite3.Connection, trigger_code: str, data: schema
     conn.commit()
 
 
-def upsert_cargo_lane(conn: sqlite3.Connection, trigger_code: str, data: schemas.CargoLaneIn) -> None:
-    camera = get_camera_row(conn, data.camera_id)
-    if camera["purpose"] != "cargo":
-        raise Conflict("Camera nhận diện hàng phải là camera loại 'cargo'")
-    conn.execute(
-        "INSERT INTO analyzer_lanes (analyzer, trigger_code, analysis_code, camera_id)"
-        " VALUES ('cargo', ?, ?, ?) ON CONFLICT (analyzer, trigger_code)"
-        " DO UPDATE SET analysis_code = excluded.analysis_code, camera_id = excluded.camera_id",
-        (trigger_code, data.analysis_code, data.camera_id),
-    )
-    conn.commit()
-
-
 def delete_analyzer_lane(conn: sqlite3.Connection, analyzer: str, trigger_code: str) -> None:
     conn.execute(
         "DELETE FROM analyzer_lanes WHERE analyzer = ? AND trigger_code = ?", (analyzer, trigger_code)

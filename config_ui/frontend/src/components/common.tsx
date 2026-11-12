@@ -43,5 +43,4 @@ export function tritonOptions(found: string[] | undefined, current: unknown[]) {
 export const PURPOSE_LABEL: Record<string, string> = {
   lane: "Làn xe",
   weight: "Màn hình cân",
-  cargo: "Thùng hàng",
 };

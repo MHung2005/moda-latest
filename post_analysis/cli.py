@@ -7,7 +7,7 @@ import logging
 from pathlib import Path
 import signal
 
-from .config import load_cargo_config, load_weight_config
+from .config import load_weight_config
 
 
 def _request_shutdown(_signum, _frame) -> None:
@@ -16,7 +16,7 @@ def _request_shutdown(_signum, _frame) -> None:
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument("service", choices=("weight", "cargo"))
+    parser.add_argument("service", choices=("weight",))
     parser.add_argument(
         "--config",
         type=Path,
@@ -35,13 +35,8 @@ def main(argv: list[str] | None = None) -> None:
     signal.signal(signal.SIGTERM, _request_shutdown)
     args = parse_args(argv)
     try:
-        if args.service == "weight":
-            from .weight_reader import run
+        from .weight_reader import run
 
-            run(load_weight_config(args.config))
-        else:
-            from .cargo_recognition import run
-
-            run(load_cargo_config(args.config))
+        run(load_weight_config(args.config))
     except KeyboardInterrupt:
         logging.getLogger(__name__).info("Analysis service stopped")

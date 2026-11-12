@@ -14,7 +14,7 @@ export interface Camera {
   id: number;
   code: string;
   name: string;
-  purpose: "lane" | "weight" | "cargo";
+  purpose: "lane" | "weight";
   env_name: string;
   rtsp_url_masked: string;
   frame_width: number | null;
@@ -80,7 +80,7 @@ export interface SystemSettings {
 }
 
 export interface AnalyzerLane {
-  analyzer: "weight" | "cargo";
+  analyzer: "weight";
   trigger_code: string;
   analysis_code: string;
   crop_x_min: number | null;
@@ -176,7 +176,6 @@ export interface VehicleResult {
   image_path: string | null;
   received_at: string;
   weight: AnalysisOutput | null;
-  cargo: AnalysisOutput | null;
   failures: { analyzer: string; error: string; failed_at: string | null }[];
 }
 
@@ -304,11 +303,10 @@ export const api = {
   system: () => get<SystemSettings>("/settings/system"),
   updateSystem: (data: SystemSettings) => put<SystemSettings>("/settings/system", data),
 
-  analyzer: (name: "weight" | "cargo") => get<Analyzer>(`/analyzers/${name}`),
-  updateAnalyzer: (name: "weight" | "cargo", data: Record<string, unknown>) => put(`/analyzers/${name}`, data),
+  analyzer: (name: "weight") => get<Analyzer>(`/analyzers/${name}`),
+  updateAnalyzer: (name: "weight", data: Record<string, unknown>) => put(`/analyzers/${name}`, data),
   upsertWeightLane: (trigger: string, data: Record<string, unknown>) => put(`/analyzers/weight/lanes/${trigger}`, data),
-  upsertCargoLane: (trigger: string, data: Record<string, unknown>) => put(`/analyzers/cargo/lanes/${trigger}`, data),
-  deleteLane: (name: "weight" | "cargo", trigger: string) => del(`/analyzers/${name}/lanes/${trigger}`),
+  deleteLane: (name: "weight", trigger: string) => del(`/analyzers/${name}/lanes/${trigger}`),
 
   modelOptions: () => get<ModelOptions>("/models/options"),
   modelFile: (path: string) => get<string>(`/models/file?path=${encodeURIComponent(path)}`),

@@ -103,18 +103,18 @@ class RoundTripTests(ProjectCase):
 
     def test_camera_url_change_restarts_services_using_it(self):
         baseline = build_files(self.conn, self.settings)
-        camera = next(c for c in repo.list_cameras(self.conn) if c["env_name"] == "MODA_CARGO_LAND1_CAMERA_URL")
+        camera = next(c for c in repo.list_cameras(self.conn) if c["env_name"] == "MODA_WEIGHT_CAMERA_URL")
         repo.update_camera(
             self.conn,
             camera["id"],
             schemas.CameraIn(
-                code=camera["code"], name=camera["name"], purpose="cargo",
+                code=camera["code"], name=camera["name"], purpose="weight",
                 env_name=camera["env_name"], rtsp_url="rtsp://u:p@10.0.0.9:554/new",
             ),
         )
         generated = build_files(self.conn, self.settings)
         services = applier.affected_services(self.conn, self.settings, generated, baseline)
-        self.assertEqual({"cargo_recognition"}, services["analysis"])
+        self.assertEqual({"weight_reader"}, services["analysis"])
         self.assertEqual(set(), services["detector"])
 
     def test_zone_outside_stream_is_rejected_by_validation(self):
@@ -137,7 +137,7 @@ class ApplyTests(ProjectCase):
 
         from moda_ui import docker_ops
 
-        deployed = {"in_gate1_land1", "weight_reader", "cargo_recognition"}
+        deployed = {"in_gate1_land1", "weight_reader"}
         calls: list[list[str]] = []
 
         def states(_settings, project):

@@ -6,7 +6,6 @@ import DashboardPage from "./pages/DashboardPage";
 import CamerasPage from "./pages/CamerasPage";
 import SitesPage from "./pages/SitesPage";
 import WeightPage from "./pages/WeightPage";
-import CargoPage from "./pages/CargoPage";
 import PlatesPage from "./pages/PlatesPage";
 import SystemPage from "./pages/SystemPage";
 import RevisionsPage from "./pages/RevisionsPage";
@@ -32,7 +31,6 @@ export default function App() {
         <Route path="sites" element={<SitesPage />} />
         <Route path="sites/:code" element={<SitesPage />} />
         <Route path="weight" element={<WeightPage />} />
-        <Route path="cargo" element={<CargoPage />} />
         <Route path="plates" element={<PlatesPage />} />
         <Route path="system" element={<SystemPage />} />
         <Route path="revisions" element={<RevisionsPage />} />

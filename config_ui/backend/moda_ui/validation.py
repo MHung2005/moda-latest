@@ -104,7 +104,7 @@ def validate_files(settings: Settings, files: Mapping[str, str]) -> list[str]:
 
         analysis_path = root / POST_ANALYSIS_FILE
         if analysis_path.exists():
-            for name, loader in (("weight", analysis.load_weight_config), ("cargo", analysis.load_cargo_config)):
+            for name, loader in (("weight", analysis.load_weight_config),):
                 try:
                     loader(analysis_path, analysis_env)
                 except ValueError as error:

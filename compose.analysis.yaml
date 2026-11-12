@@ -57,16 +57,3 @@ services:
       MODA_TRITON_URL: ${MODA_TRITON_URL:-http://triton:8000}
       MODA_WEIGHT_CAMERA_URL: ${MODA_WEIGHT_CAMERA_URL:?set MODA_WEIGHT_CAMERA_URL}
       OPENCV_FFMPEG_CAPTURE_OPTIONS: "rtsp_transport;tcp"
-
-  cargo_recognition:
-    <<: *analysis
-    command: ["cargo", "--config", "/app/config/post_analysis.json"]
-    depends_on:
-      triton:
-        condition: service_healthy
-    environment:
-      MODA_KAFKA_BOOTSTRAP_SERVERS: ${MODA_KAFKA_BOOTSTRAP_SERVERS:?set MODA_KAFKA_BOOTSTRAP_SERVERS}
-      MODA_TRITON_URL: ${MODA_TRITON_URL:-http://triton:8000}
-      MODA_CARGO_LAND1_CAMERA_URL: ${MODA_CARGO_LAND1_CAMERA_URL:?set MODA_CARGO_LAND1_CAMERA_URL}
-      MODA_CARGO_LAND2_CAMERA_URL: ${MODA_CARGO_LAND2_CAMERA_URL:?set MODA_CARGO_LAND2_CAMERA_URL}
-      OPENCV_FFMPEG_CAPTURE_OPTIONS: "rtsp_transport;tcp"

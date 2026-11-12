@@ -1,32 +1,30 @@
 # Moda traffic and downstream analysis
 
 Ứng dụng nhận luồng RTSP trên NVIDIA Jetson. DeepStream nhận diện xe/biển số và phát
-sự kiện Kafka; hai service phía sau đọc cân và nhận diện hàng từ sự kiện đó.
+sự kiện Kafka; service phía sau đọc cân từ sự kiện đó.
 
 ## Luồng chạy
 
 ```text
 Camera làn xe -> traffic_core (DeepStream) -> VehicleDetection_Gate1
                                                    |-> weight_reader
-                                                   |     -> đọc màn hình cân
-                                                   |-> cargo_recognition
-                                                         -> thùng hàng + loại đá
-                                             cả hai -> AnalysisResult_Gate1
+                                                         -> đọc màn hình cân
+                                                         -> AnalysisResult_Gate1
 ```
 
-`weight_reader` và `cargo_recognition` là Kafka consumer độc lập. Chúng không được
-import bởi `traffic_core`; topic Kafka là seam giữa các module.
+`weight_reader` là Kafka consumer độc lập. Nó không được import bởi `traffic_core`;
+topic Kafka là seam giữa các module.
 
 ## Cấu trúc
 
 ```text
 traffic_core/                 Runtime DeepStream dùng chung cho bốn camera/làn
-post_analysis/                Runtime đọc cân và nhận diện hàng
+post_analysis/                Runtime đọc cân
 config/sites/                 Cấu hình riêng cho camera/làn
-config/post_analysis.json     ROI, model và quy tắc của hai analyzer
+config/post_analysis.json     ROI, model và quy tắc của analyzer đọc cân
 config/reference_plates/      Danh sách biển số tham chiếu
 models/                       Model DeepStream
-models/triton/                Ba model phục vụ analyzer qua Triton
+models/triton/                Model đọc cân (tram_can) qua Triton
 compose.yaml                  Bốn detector DeepStream
 compose.analysis.yaml         Triton và hai service post-analysis
 Dockerfile.analysis           Image post-analysis dành cho JetPack 6
@@ -76,12 +74,12 @@ python3 -m traffic_core --site config/sites/in_gate1_land1.json --gpu 0
 
 Deployment này nhắm JetPack 6.2 (L4T R36.4)/DeepStream 7.1. Image analyzer được build từ image
 Ultralytics dành cho JetPack 6; `Dockerfile.analysis` bổ sung Kafka và Triton client.
-Triton, `weight_reader` và `cargo_recognition` được tách khỏi Compose của detector để
+Triton và `weight_reader` được tách khỏi Compose của detector để
 không vô tình khởi động cả bốn camera.
 
 ```bash
 cp .env.jetson.example .env.jetson
-# Sửa Kafka và ba RTSP URL trong .env.jetson
+# Sửa Kafka và RTSP URL camera cân trong .env.jetson
 
 chmod +x scripts/analysis-service.sh
 ./scripts/analysis-service.sh config
@@ -102,7 +100,7 @@ Có thể gọi Compose trực tiếp khi cần:
 
 ```bash
 docker compose --env-file .env.jetson -f compose.analysis.yaml \
-  up -d --build triton weight_reader cargo_recognition
+  up -d --build triton weight_reader
 ```
 
 `MODA_ANALYSIS_BASE_IMAGE` mặc định là tag JetPack 6 `8.3.153` của Ultralytics.
@@ -113,11 +111,9 @@ Hoặc chạy riêng trong môi trường đã có các dependency trên:
 
 ```bash
 python3 -m post_analysis weight --config config/post_analysis.json
-python3 -m post_analysis cargo --config config/post_analysis.json
 ```
 
-`weight_reader` đọc `MODA_WEIGHT_CAMERA_URL`. `cargo_recognition` dùng camera hàng
-theo làn từ `MODA_CARGO_LAND1_CAMERA_URL` và `MODA_CARGO_LAND2_CAMERA_URL`.
+`weight_reader` đọc `MODA_WEIGHT_CAMERA_URL`.
 
 ### Quy tắc xử lý event
 
@@ -128,8 +124,7 @@ theo làn từ `MODA_CARGO_LAND1_CAMERA_URL` và `MODA_CARGO_LAND2_CAMERA_URL`.
 - Cơ chế này là at-least-once: crash ngay sau khi publish output nhưng trước commit có
   thể tạo kết quả lặp. Consumer cuối nên dùng `section_id + analysis_code` làm khóa
   idempotency.
-- Mỗi job có deadline và chạy trong process riêng. Cargo chỉ nhận thêm message khi còn
-  worker trống nên không tạo queue vô hạn.
+- Mỗi job có deadline và chạy trong process riêng.
 - Weight giữ bộ đếm cùng tối đa hai frame đại diện; frame không thấy chữ số không bị
   coi là giá trị cân `0`.
 - Event weight mới của cùng lane thay thế event đang đọc; event cũ được ghi vào dead

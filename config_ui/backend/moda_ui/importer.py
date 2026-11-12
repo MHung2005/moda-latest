@@ -225,29 +225,6 @@ def import_from_files(conn: sqlite3.Connection, settings: Settings, *, force: bo
                 (trigger_code, weight["analysis_codes"][trigger_code], *crop),
             )
 
-        cargo = analysis["cargo"]
-        _put(
-            conn,
-            "analyzer_settings",
-            "cargo",
-            {
-                "detector_model": cargo["detector_model"],
-                "classifier_model": cargo["classifier_model"],
-                **{key: cargo.get(key, WORKER_DEFAULTS.get(key)) for key in WORKER_KEYS},
-                "detection_confidence": cargo.get("detection_confidence", 0.8),
-                "preferred_class_confidence": cargo.get("preferred_class_confidence", 0.7),
-                "settle_seconds": cargo.get("settle_seconds", 5),
-                "capture_retries": cargo.get("capture_retries", 3),
-            },
-        )
-        for trigger_code, env_name in cargo["camera_url_envs"].items():
-            camera_id = _ensure_camera(conn, env_name, "cargo", analysis_env, warnings)
-            conn.execute(
-                "INSERT INTO analyzer_lanes (analyzer, trigger_code, analysis_code, camera_id)"
-                " VALUES ('cargo', ?, ?, ?)",
-                (trigger_code, cargo["analysis_codes"][trigger_code], camera_id),
-            )
-
     for warning in warnings:
         logger.warning(warning)
     return warnings

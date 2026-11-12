@@ -12,7 +12,7 @@ from typing import Any
 
 from . import repository as repo
 from .envfile import update_env_text
-from .schemas import KAFKA_ENV, TRITON_ENV, CargoSettings, SystemSettings, WeightSettings
+from .schemas import KAFKA_ENV, TRITON_ENV, SystemSettings, WeightSettings
 from .settings import Settings
 
 
@@ -136,9 +136,7 @@ def _load_settings(conn: sqlite3.Connection, model, analyzer: str | None):
 def build_post_analysis(conn: sqlite3.Connection, cameras: dict[int, dict]) -> dict:
     system = _load_settings(conn, SystemSettings, None)
     weight = _load_settings(conn, WeightSettings, "weight")
-    cargo = _load_settings(conn, CargoSettings, "cargo")
     weight_lanes = repo.list_analyzer_lanes(conn, "weight")
-    cargo_lanes = repo.list_analyzer_lanes(conn, "cargo")
     if weight["camera_id"] not in cameras:
         raise GenerationError("Camera đọc cân không tồn tại")
 
@@ -156,19 +154,6 @@ def build_post_analysis(conn: sqlite3.Connection, cameras: dict[int, dict]) -> d
         },
         "analysis_codes": {lane["trigger_code"]: lane["analysis_code"] for lane in weight_lanes},
     }
-    cargo_section = {
-        "camera_url_envs": {
-            lane["trigger_code"]: cameras[lane["camera_id"]]["env_name"] for lane in cargo_lanes
-        },
-        "detector_model": cargo["detector_model"],
-        "classifier_model": cargo["classifier_model"],
-        **_worker_section(cargo),
-        "detection_confidence": _number(cargo["detection_confidence"]),
-        "preferred_class_confidence": _number(cargo["preferred_class_confidence"]),
-        "settle_seconds": _number(cargo["settle_seconds"]),
-        "capture_retries": cargo["capture_retries"],
-        "analysis_codes": {lane["trigger_code"]: lane["analysis_code"] for lane in cargo_lanes},
-    }
     return {
         "kafka_bootstrap_servers_env": KAFKA_ENV,
         "triton_url_env": TRITON_ENV,
@@ -178,7 +163,6 @@ def build_post_analysis(conn: sqlite3.Connection, cameras: dict[int, dict]) -> d
         "publish_timeout_seconds": _number(system["publish_timeout_seconds"]),
         "utc_offset_hours": system["utc_offset_hours"],
         "weight": weight_section,
-        "cargo": cargo_section,
     }
 
 

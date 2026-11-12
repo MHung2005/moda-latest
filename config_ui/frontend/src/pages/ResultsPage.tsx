@@ -185,18 +185,6 @@ export default function ResultsPage() {
         />
       ),
     },
-    {
-      title: "Hàng",
-      key: "cargo",
-      width: 140,
-      render: (_, row) => (
-        <AnalysisCell
-          result={row.cargo}
-          failure={row.failures.find((item) => item.analyzer === "cargo")}
-          pendingSince={row.received_at}
-        />
-      ),
-    },
   ];
 
   return (

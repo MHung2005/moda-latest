@@ -38,9 +38,7 @@ require_environment() {
   local key
   for key in \
     MODA_KAFKA_BOOTSTRAP_SERVERS \
-    MODA_WEIGHT_CAMERA_URL \
-    MODA_CARGO_LAND1_CAMERA_URL \
-    MODA_CARGO_LAND2_CAMERA_URL; do
+    MODA_WEIGHT_CAMERA_URL; do
     if ! grep -Eq "^[[:space:]]*${key}=.+$" "${ENV_FILE}"; then
       echo "Missing or empty setting in ${ENV_FILE}: ${key}" >&2
       missing=1
@@ -50,7 +48,7 @@ require_environment() {
     exit 1
   fi
 
-  if grep -Eq 'user:password|camera-host|cargo-camera|weight-camera' "${ENV_FILE}"; then
+  if grep -Eq 'user:password|camera-host|weight-camera' "${ENV_FILE}"; then
     echo "Environment file still contains example camera values: ${ENV_FILE}" >&2
     exit 1
   fi
@@ -71,7 +69,7 @@ preflight() {
   fi
 
   local model
-  for model in tram_can thung_hang rock_classify; do
+  for model in tram_can; do
     if [[ ! -s "${PROJECT_DIR}/models/triton/${model}/1/model.onnx" ]]; then
       echo "Missing or empty Triton model: models/triton/${model}/1/model.onnx" >&2
       exit 1
@@ -82,16 +80,14 @@ preflight() {
     fi
   done
 
-  mkdir -p \
-    "${PROJECT_DIR}/runtime/weight_result" \
-    "${PROJECT_DIR}/runtime/thung_hang"
+  mkdir -p "${PROJECT_DIR}/runtime/weight_result"
   compose config --quiet
 }
 
 case "${ACTION}" in
   start)
     preflight
-    compose up --detach --build triton weight_reader cargo_recognition
+    compose up --detach --build triton weight_reader
     compose ps
     ;;
   stop)
@@ -102,7 +98,7 @@ case "${ACTION}" in
   restart)
     preflight
     compose up --detach --build --force-recreate \
-      triton weight_reader cargo_recognition
+      triton weight_reader
     compose ps
     ;;
   status)

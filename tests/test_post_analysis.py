@@ -1,13 +1,7 @@
 import json
 import unittest
 
-from post_analysis.cargo_recognition import (
-    Detection,
-    classify_rock_crops,
-    select_detection,
-    select_rock_label,
-)
-from post_analysis.config import load_cargo_config, load_weight_config
+from post_analysis.config import load_weight_config
 from post_analysis.contracts import build_analysis_result
 from post_analysis.kafka import MessageDecodeError, decode_event
 from post_analysis.runtime import (
@@ -26,8 +20,6 @@ ENVIRONMENT = {
     "MODA_KAFKA_BOOTSTRAP_SERVERS": "kafka:29092",
     "MODA_TRITON_URL": "http://triton:8000",
     "MODA_WEIGHT_CAMERA_URL": "rtsp://weight",
-    "MODA_CARGO_LAND1_CAMERA_URL": "rtsp://cargo-1",
-    "MODA_CARGO_LAND2_CAMERA_URL": "rtsp://cargo-2",
 }
 
 
@@ -37,28 +29,6 @@ class FakeFrame:
 
     def copy(self):
         return FakeFrame(self.name)
-
-
-class FakeProbabilities:
-    def __init__(self, top1, confidence):
-        self.top1 = top1
-        self.top1conf = confidence
-
-
-class FakeClassificationResult:
-    def __init__(self, top1, confidence):
-        self.probs = FakeProbabilities(top1, confidence)
-
-
-class FakeClassifier:
-    def __init__(self, predictions):
-        self.predictions = iter(predictions)
-        self.sources = []
-
-    def predict(self, *, source, save):
-        self.sources.append(source)
-        top1, confidence = next(self.predictions)
-        return [FakeClassificationResult(top1, confidence)]
 
 
 def successful_worker(_config, event, _stop_event):
@@ -74,15 +44,6 @@ class PostAnalysisConfigTests(unittest.TestCase):
         self.assertEqual(config.model_url, "http://triton:8000/tram_can")
         self.assertEqual(config.kafka.dead_letter_topic, "AnalysisFailure_Gate1")
         self.assertEqual(config.worker.max_workers, 2)
-
-    def test_loads_cargo_cameras_and_worker_limits(self):
-        config = load_cargo_config(CONFIG_PATH, ENVIRONMENT)
-
-        self.assertEqual(config.camera_urls["in_gate1_land1"], "rtsp://cargo-1")
-        self.assertEqual(config.camera_urls["out_gate1_land2"], "rtsp://cargo-2")
-        self.assertEqual(config.classifier_url, "http://triton:8000/rock_classify")
-        self.assertEqual(config.worker.max_workers, 3)
-        self.assertEqual(config.worker.event_timeout_seconds, 120)
 
 
 class KafkaContractTests(unittest.TestCase):
@@ -175,36 +136,6 @@ class WeightLogicTests(unittest.TestCase):
         self.assertTrue(accumulator.early_stopped)
         self.assertEqual(accumulator.selected().value, 5_000)
         self.assertEqual(accumulator.selected().frame.name, "peak")
-
-
-class CargoLogicTests(unittest.TestCase):
-    def test_selects_highest_confidence_detection_not_first_box(self):
-        selected = select_detection(
-            [
-                Detection(0, 0.51, (0, 0, 10, 10)),
-                Detection(1, 0.91, (10, 10, 30, 30)),
-            ]
-        )
-
-        self.assertEqual(selected.class_id, 1)
-
-    def test_preferred_base_rock_wins_above_threshold(self):
-        result = select_rock_label([(2, 0.95), (0, 0.75)], 0.7)
-
-        self.assertEqual(result, "dasetbase")
-
-    def test_highest_confidence_rock_wins_without_preferred_base(self):
-        result = select_rock_label([(2, 0.95), (0, 0.65)], 0.7)
-
-        self.assertEqual(result, "da5x10")
-
-    def test_fixed_batch_classifier_receives_one_crop_per_request(self):
-        classifier = FakeClassifier([(2, 0.95), (0, 0.75), (4, 0.99)])
-
-        result = classify_rock_crops(classifier, ["a", "b", "c"], 0.7)
-
-        self.assertEqual(result, "dasetbase")
-        self.assertEqual(classifier.sources, ["a", "b"])
 
 
 if __name__ == "__main__":

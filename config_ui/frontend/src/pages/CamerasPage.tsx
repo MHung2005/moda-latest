@@ -155,7 +155,7 @@ export default function CamerasPage() {
           <Row gutter={12}>
             <Col span={12}>
               <Form.Item name="code" label={<FieldLabel label="Mã" field="code" />} rules={[{ required: true, pattern: /^[a-z0-9_]+$/, message: "Chữ thường, số, gạch dưới" }]}>
-                <Input placeholder="cargo_land1" />
+                <Input placeholder="weight_cam" />
               </Form.Item>
             </Col>
             <Col span={12}>
@@ -175,7 +175,7 @@ export default function CamerasPage() {
                 rules={[{ required: true, pattern: /^[A-Z][A-Z0-9_]*$/, message: "VIẾT_HOA_GẠCH_DƯỚI" }]}
                 extra="Tên biến trong .env / .env.jetson mà compose truyền vào container"
               >
-                <Input placeholder="MODA_CARGO_LAND1_CAMERA_URL" />
+                <Input placeholder="MODA_WEIGHT_CAMERA_URL" />
               </Form.Item>
             </Col>
           </Row>

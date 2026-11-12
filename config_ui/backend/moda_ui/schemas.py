@@ -44,7 +44,7 @@ class PasswordChange(BaseModel):
 class CameraIn(BaseModel):
     code: str = Field(pattern=r"^[a-z0-9_]+$", max_length=64)
     name: str = Field(min_length=1, max_length=128)
-    purpose: Literal["lane", "weight", "cargo"]
+    purpose: Literal["lane", "weight"]
     env_name: str = Field(pattern=r"^[A-Z][A-Z0-9_]*$", max_length=128)
     # Omitted on update = keep the stored URL.
     rtsp_url: Optional[str] = None
@@ -180,16 +180,7 @@ class WeightSettings(WorkerSettings):
     max_drop_count: int = Field(gt=0)
 
 
-class CargoSettings(WorkerSettings):
-    detector_model: str = Field(min_length=1)
-    classifier_model: str = Field(min_length=1)
-    detection_confidence: float = Field(ge=0, le=1)
-    preferred_class_confidence: float = Field(ge=0, le=1)
-    settle_seconds: float = Field(ge=0)
-    capture_retries: int = Field(gt=0)
-
-
-ANALYZER_MODELS = {"weight": WeightSettings, "cargo": CargoSettings}
+ANALYZER_MODELS = {"weight": WeightSettings}
 
 
 class WeightLaneIn(BaseModel):
@@ -204,11 +195,6 @@ class WeightLaneIn(BaseModel):
         if self.crop_x_min >= self.crop_x_max or self.crop_y_min >= self.crop_y_max:
             raise ValueError("Vùng crop rỗng: cần x_min < x_max và y_min < y_max")
         return self
-
-
-class CargoLaneIn(BaseModel):
-    analysis_code: str = Field(min_length=1)
-    camera_id: int
 
 
 # --- apply ---------------------------------------------------------------------------

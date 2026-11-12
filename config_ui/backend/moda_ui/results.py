@@ -65,9 +65,9 @@ CREATE TABLE IF NOT EXISTS analysis_failures (
 );
 """
 
-# analysis_cam_id values written by post_analysis (weight_reader.py / cargo_recognition.py).
-ANALYZERS = {1: "weight", 2: "cargo"}
-SERVICE_ANALYZER = {"weight_reader": "weight", "cargo_recognition": "cargo"}
+# analysis_cam_id values written by post_analysis (weight_reader.py).
+ANALYZERS = {1: "weight"}
+SERVICE_ANALYZER = {"weight_reader": "weight"}
 
 # Container-side image roots (compose.yaml / compose.analysis.yaml) -> path under runtime/.
 DETECTOR_IMAGE_ROOT = "/data/vehicle/"
@@ -131,7 +131,7 @@ def vehicle_image_relpath(container_path: str | None, trigger_code: str) -> str 
 
 
 def analysis_image_relpath(path: str | None) -> str | None:
-    """weight: /workspace/traffic/weight_result/..; cargo: thung_hang/<date>/.. (relative)."""
+    """weight: /workspace/traffic/weight_result/.."""
     if not path:
         return None
     if path.startswith(ANALYSIS_IMAGE_ROOT):
@@ -344,7 +344,6 @@ def _event_dict(row: sqlite3.Row) -> dict:
     data["requires_search"] = bool(data["requires_search"])
     data["in_reference"] = bool(data["plate"]) and data["plate"] == data["best_match"]
     data["weight"] = None
-    data["cargo"] = None
     data["failures"] = []
     return data
 
@@ -357,6 +356,8 @@ def _attach_analysis(conn: sqlite3.Connection, items: list[dict]) -> None:
     for row in conn.execute(
         f"SELECT * FROM analysis_results WHERE section_id IN ({marks})", list(by_section)
     ):
+        if row["analyzer"] not in ANALYZERS.values():
+            continue
         by_section[row["section_id"]][row["analyzer"]] = {
             "output": row["output"],
             "analysis_code": row["analysis_code"],
@@ -378,7 +379,9 @@ def _attach_analysis(conn: sqlite3.Connection, items: list[dict]) -> None:
         item = by_offset.get((row["source_partition"], row["source_offset"]))
         if item is None:
             continue
-        analyzer = SERVICE_ANALYZER.get(row["service"], row["service"])
+        analyzer = SERVICE_ANALYZER.get(row["service"])
+        if analyzer is None:
+            continue
         if item.get(analyzer):
             continue  # a later retry succeeded
         item["failures"].append({"analyzer": analyzer, "error": row["error"], "failed_at": row["failed_at"]})

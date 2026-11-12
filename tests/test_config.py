@@ -95,21 +95,9 @@ class SiteConfigTests(unittest.TestCase):
             detector_triggers,
             set(post_raw["weight"]["analysis_codes"]),
         )
-        self.assertEqual(
-            detector_triggers,
-            set(post_raw["cargo"]["camera_url_envs"]),
-        )
-        self.assertEqual(
-            detector_triggers,
-            set(post_raw["cargo"]["analysis_codes"]),
-        )
 
         model_root = repository / "models" / "triton"
-        model_names = {
-            post_raw["weight"]["model"],
-            post_raw["cargo"]["detector_model"],
-            post_raw["cargo"]["classifier_model"],
-        }
+        model_names = {post_raw["weight"]["model"]}
         for model_name in model_names:
             self.assertTrue(
                 (model_root / model_name / "1" / "model.onnx").is_file(),

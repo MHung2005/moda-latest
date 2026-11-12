@@ -65,23 +65,6 @@ class WeightConfig:
     utc_offset_hours: int
 
 
-@dataclass(frozen=True)
-class CargoConfig:
-    kafka: KafkaConfig
-    worker: WorkerConfig
-    io: IoConfig
-    camera_urls: Mapping[str, str]
-    detector_url: str
-    classifier_url: str
-    analysis_codes: Mapping[str, str]
-    output_root: str
-    detection_confidence: float
-    preferred_class_confidence: float
-    settle_seconds: float
-    capture_retries: int
-    utc_offset_hours: int
-
-
 def _object(value: object, field: str) -> dict:
     if not isinstance(value, dict):
         raise AnalysisConfigError(f"{field} must be a JSON object")
@@ -280,68 +263,6 @@ def load_weight_config(
         ),
         max_drop_count=_positive(
             weight.get("max_drop_count", 70), "weight.max_drop_count", int
-        ),
-        utc_offset_hours=utc_offset_hours,
-    )
-
-
-def load_cargo_config(
-    path: str | Path, environment: Mapping[str, str] | None = None
-) -> CargoConfig:
-    values = os.environ if environment is None else environment
-    raw = _load_raw(path)
-    cargo = _object(raw.get("cargo"), "cargo")
-    kafka, worker, io, triton_url, utc_offset_hours = _load_common(
-        raw, cargo, values, "moda-cargo-recognition"
-    )
-
-    camera_envs = _string_map(cargo.get("camera_url_envs"), "cargo.camera_url_envs")
-    camera_urls = {
-        trigger_code: _environment_value(values, env_name, f"cargo camera {trigger_code}")
-        for trigger_code, env_name in camera_envs.items()
-    }
-    analysis_codes = _string_map(cargo.get("analysis_codes"), "cargo.analysis_codes")
-    if set(camera_urls) != set(analysis_codes):
-        raise AnalysisConfigError(
-            "cargo.camera_url_envs and cargo.analysis_codes must have identical trigger codes"
-        )
-
-    detection_confidence = _number(
-        cargo.get("detection_confidence", 0.8),
-        "cargo.detection_confidence",
-        float,
-    )
-    preferred_confidence = _number(
-        cargo.get("preferred_class_confidence", 0.7),
-        "cargo.preferred_class_confidence",
-        float,
-    )
-    if not 0 <= detection_confidence <= 1 or not 0 <= preferred_confidence <= 1:
-        raise AnalysisConfigError("cargo confidence settings must be between 0 and 1")
-
-    return CargoConfig(
-        kafka=kafka,
-        worker=worker,
-        io=io,
-        camera_urls=camera_urls,
-        detector_url=_model_url(
-            triton_url, cargo.get("detector_model"), "cargo.detector_model"
-        ),
-        classifier_url=_model_url(
-            triton_url, cargo.get("classifier_model"), "cargo.classifier_model"
-        ),
-        analysis_codes=analysis_codes,
-        output_root=_text(cargo.get("output_root"), "cargo.output_root"),
-        detection_confidence=detection_confidence,
-        preferred_class_confidence=preferred_confidence,
-        settle_seconds=_positive(
-            cargo.get("settle_seconds", 5),
-            "cargo.settle_seconds",
-            float,
-            allow_zero=True,
-        ),
-        capture_retries=_positive(
-            cargo.get("capture_retries", 3), "cargo.capture_retries", int
         ),
         utc_offset_hours=utc_offset_hours,
     )
