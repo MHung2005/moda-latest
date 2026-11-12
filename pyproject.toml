@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "moda-traffic-core"
+version = "0.1.0"
+description = "Shared domain logic for the Moda traffic camera deployments"
+requires-python = ">=3.8"
+
+[project.scripts]
+moda-traffic = "traffic_core.cli:main"
+moda-analysis = "post_analysis.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["traffic_core*", "post_analysis*"]

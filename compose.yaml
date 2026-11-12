@@ -1,0 +1,66 @@
+x-traffic: &traffic
+  image: moda-traffic:latest
+  build:
+    context: .
+    dockerfile: Dockerfile
+  restart: unless-stopped
+  init: true
+  runtime: nvidia
+  ipc: host
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+x-runtime-environment: &runtime-environment
+  MODA_KAFKA_BOOTSTRAP_SERVERS: ${MODA_KAFKA_BOOTSTRAP_SERVERS:?set MODA_KAFKA_BOOTSTRAP_SERVERS}
+
+services:
+  in_gate1_land1:
+    <<: *traffic
+    command: ["--site", "/app/config/sites/in_gate1_land1.json"]
+    environment:
+      <<: *runtime-environment
+      MODA_IN_GATE1_LAND1_CAMERA_URL: ${MODA_IN_GATE1_LAND1_CAMERA_URL:-}
+    volumes:
+      - ./models:/home/jetson/models:ro
+      - ./config:/app/config:ro
+      - ./runtime/engines:/cache/engines
+      - ./runtime/vehicle/in_gate1_land1:/data/vehicle
+
+  in_gate1_land2:
+    <<: *traffic
+    command: ["--site", "/app/config/sites/in_gate1_land2.json"]
+    environment:
+      <<: *runtime-environment
+      MODA_IN_GATE1_LAND2_CAMERA_URL: ${MODA_IN_GATE1_LAND2_CAMERA_URL:-}
+    volumes:
+      - ./models:/home/jetson/models:ro
+      - ./config:/app/config:ro
+      - ./runtime/engines:/cache/engines
+      - ./runtime/vehicle/in_gate1_land2:/data/vehicle
+
+  out_gate1_land1:
+    <<: *traffic
+    command: ["--site", "/app/config/sites/out_gate1_land1.json"]
+    environment:
+      <<: *runtime-environment
+      MODA_OUT_GATE1_LAND1_CAMERA_URL: ${MODA_OUT_GATE1_LAND1_CAMERA_URL:-}
+    volumes:
+      - ./models:/home/jetson/models:ro
+      - ./config:/app/config:ro
+      - ./runtime/engines:/cache/engines
+      - ./runtime/vehicle/out_gate1_land1:/data/vehicle
+
+  out_gate1_land2:
+    <<: *traffic
+    command: ["--site", "/app/config/sites/out_gate1_land2.json"]
+    environment:
+      <<: *runtime-environment
+      MODA_OUT_GATE1_LAND2_CAMERA_URL: ${MODA_OUT_GATE1_LAND2_CAMERA_URL:-}
+    volumes:
+      - ./models:/home/jetson/models:ro
+      - ./config:/app/config:ro
+      - ./runtime/engines:/cache/engines
+      - ./runtime/vehicle/out_gate1_land2:/data/vehicle

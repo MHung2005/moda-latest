@@ -1,0 +1,40 @@
+[property]
+gpu-id=0
+net-scale-factor=0.0039215697906911373
+model-color-format=0
+
+# onnx-file=best.onnx
+# model-engine-file=model_b1_gpu0_fp16_new.engine
+
+onnx-file=out_land1.onnx
+#model-engine-file=vehicle_update_side_fix_b03_moda.engine
+model-engine-file=/cache/engines/out_gate1_land1.engine
+labelfile-path=labels.txt
+
+batch-size=1
+gie-unique-id=1
+
+process-mode=1
+network-type=0
+network-mode=2
+cluster-mode=2
+
+num-detected-classes=4
+interval=0
+
+maintain-aspect-ratio=1
+# symmetric-padding=1
+
+parse-bbox-func-name=NvDsInferParseYolo
+custom-lib-path=/opt/moda/libnvdsinfer_custom_impl_Yolo.so
+# TensorRT 10: engines are built by docker/prepare_engines.py (trtexec)
+#engine-create-func-name=NvDsInferYoloCudaEngineGet
+
+[class-attrs-all]
+nms-iou-threshold=0.7
+# threshold=0.25
+pre-cluster-threshold=0.25
+topk=50
+
+
+

@@ -1,0 +1,56 @@
+%YAML:1.0
+################################################################################
+# NvDCF tracker configuration for DeepStream 7.1 (JetPack 6).
+#
+# Converted from the DeepStream 5.x file (kept as config_tracker.ds5.yml.bak), whose
+# single "NvDCF:" section DeepStream 6+ no longer reads. Values from the old file are
+# kept where the new format has the same parameter; the rest follow NVIDIA's
+# config_tracker_NvDCF_perf.yml defaults for DeepStream 7.1.
+################################################################################
+
+BaseConfig:
+  minDetectorConfidence: 0          # old: -1 (keep every detection; vehicle_confidence is applied in Python)
+
+TargetManagement:
+  enableBboxUnClipping: 0
+  preserveStreamUpdateOrder: 0
+  maxTargetsPerStream: 99           # old value
+  minIouDiff4NewTarget: 0.5
+  minTrackerConfidence: 0.7         # old value
+  probationAge: 3                   # old value
+  maxShadowTrackingAge: 30          # old value
+  earlyTerminationAge: 1            # old value
+
+TrajectoryManagement:
+  useUniqueID: 1                    # old value
+
+DataAssociator:
+  dataAssociatorType: 0             # 0 = default (greedy/cascaded matcher below)
+  associationMatcherType: 0         # 0 = GREEDY (old: useGlobalMatching: 0)
+  checkClassMatch: 1
+  minMatchingScore4Overall: 0.0             # old value
+  minMatchingScore4SizeSimilarity: 0.5      # old value
+  minMatchingScore4Iou: 0.1                 # old value
+  minMatchingScore4VisualSimilarity: 0.2    # old value
+  matchingScoreWeight4VisualSimilarity: 0.8 # old value
+  matchingScoreWeight4SizeSimilarity: 0.0   # old value
+  matchingScoreWeight4Iou: 0.1              # old value
+
+StateEstimator:
+  # The old moving-average estimator does not exist any more; 1 = simple Kalman filter.
+  stateEstimatorType: 1
+  processNoiseVar4Loc: 2.0
+  processNoiseVar4Size: 1.0
+  processNoiseVar4Vel: 0.1
+  measurementNoiseVar4Detector: 4.0
+  measurementNoiseVar4Tracker: 16.0
+
+VisualTracker:
+  visualTrackerType: 1              # 1 = NvDCF
+  useColorNames: 1                  # old value
+  useHog: 0                         # old value
+  featureImgSizeLevel: 3            # old value
+  featureFocusOffsetFactor_y: -0.2
+  filterLr: 0.15                    # old value
+  filterChannelWeightsLr: 0.22      # old value
+  gaussianSigma: 0.75               # old value

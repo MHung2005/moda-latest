@@ -1,0 +1,56 @@
+# Web configuration UI. Separate compose project so that "up"/"down" here never touches
+# the detectors or the post-analysis services.
+#
+#   cp .env.ui.example .env.ui        # then edit MODA_PROJECT_DIR and MODA_CONFIG_SECRET
+#   docker compose -f compose.ui.yaml --env-file .env.ui up -d --build
+name: moda-config-ui
+
+services:
+  config_ui:
+    image: moda-config-ui:latest
+    build:
+      context: .
+      dockerfile: config_ui/Dockerfile
+    restart: unless-stopped
+    init: true
+    # Bind to the LAN address of the Jetson in .env.ui: this container controls Docker.
+    ports:
+      - "${MODA_UI_BIND:-0.0.0.0}:${MODA_UI_PORT:-8080}:8080"
+    environment:
+      MODA_PROJECT_DIR: ${MODA_PROJECT_DIR:?set MODA_PROJECT_DIR to the absolute path of this checkout}
+      MODA_CONFIG_SECRET: ${MODA_CONFIG_SECRET:?set MODA_CONFIG_SECRET}
+      MODA_CONFIG_DB: /data/moda_config.db
+      MODA_UI_HEALTH_WAIT_SECONDS: ${MODA_UI_HEALTH_WAIT_SECONDS:-20}
+    working_dir: ${MODA_PROJECT_DIR}
+    volumes:
+      # Same absolute path as on the host: compose files use relative paths
+      # (./models, ./runtime ...) that the Docker daemon resolves on the host.
+      - ${MODA_PROJECT_DIR}:${MODA_PROJECT_DIR}
+      - ./config_ui/data:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Kafka -> SQLite (config_ui/data/moda_results.db). Read by the "Kết quả" page of config_ui.
+  results_recorder:
+    image: moda-config-ui:latest
+    command: ["record"]
+    restart: unless-stopped
+    init: true
+    mem_limit: 256m
+    environment:
+      MODA_PROJECT_DIR: ${MODA_PROJECT_DIR:?set MODA_PROJECT_DIR to the absolute path of this checkout}
+      MODA_CONFIG_DB: /data/moda_config.db
+      MODA_KAFKA_BOOTSTRAP_SERVERS: ${MODA_KAFKA_BOOTSTRAP_SERVERS:?set MODA_KAFKA_BOOTSTRAP_SERVERS}
+    volumes:
+      - ./config_ui/data:/data
+    depends_on:
+      - config_ui
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

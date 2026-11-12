@@ -1,0 +1,32 @@
+**/__pycache__/
+**/*.pyc
+**/*.log
+**/*.jpg
+**/*.jpeg
+**/*.png
+**/*.avi
+**/*.mp4
+runtime/
+models/
+yolov_model/
+triton/
+.serena/
+.assistant-artifacts/
+tests/
+specs/
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Only the YOLO bbox parser sources are needed from models/ (compiled into the detector
+# image for DeepStream 7.1); the models themselves are mounted at runtime.
+!models/plate_recognition/nvdsinfer_custom_impl_Yolo/nvdsparsebbox_Yolo.cpp
+!models/plate_recognition/nvdsinfer_custom_impl_Yolo/nvdsparsebbox_Yolo_cuda.cu
+!models/plate_recognition/nvdsinfer_custom_impl_Yolo/utils.cpp
+!models/plate_recognition/nvdsinfer_custom_impl_Yolo/utils.h
+
+# Configuration UI: dependencies/builds are produced inside the image
+config_ui/data/
+config_ui/frontend/node_modules/
+config_ui/frontend/dist/

@@ -1,0 +1,21 @@
+ARG ANALYSIS_BASE_IMAGE=ultralytics/ultralytics:8.3.153-jetson-jetpack6
+FROM ${ANALYSIS_BASE_IMAGE}
+
+ENV PYTHONPATH=/app \
+    PYTHONUNBUFFERED=1 \
+    YOLO_CONFIG_DIR=/tmp/ultralytics \
+    YOLO_AUTOINSTALL=false
+
+WORKDIR /app
+
+COPY requirements.analysis.txt /tmp/requirements.analysis.txt
+RUN python3 -m pip install --no-cache-dir -r /tmp/requirements.analysis.txt \
+    && python3 -c "import cv2, kafka, tritonclient.http, ultralytics"
+
+COPY post_analysis /app/post_analysis
+COPY config/post_analysis.json /app/config/post_analysis.json
+
+RUN mkdir -p /workspace/traffic /tmp/ultralytics \
+    && python3 -m post_analysis --help
+
+ENTRYPOINT ["python3", "-m", "post_analysis"]

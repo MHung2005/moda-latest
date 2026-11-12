@@ -1,0 +1,71 @@
+{
+  "kafka_bootstrap_servers_env": "MODA_KAFKA_BOOTSTRAP_SERVERS",
+  "triton_url_env": "MODA_TRITON_URL",
+  "input_topic": "VehicleDetection_Gate1",
+  "output_topic": "AnalysisResult_Gate1",
+  "dead_letter_topic": "AnalysisFailure_Gate1",
+  "publish_timeout_seconds": 30,
+  "utc_offset_hours": 7,
+  "weight": {
+    "camera_url_env": "MODA_WEIGHT_CAMERA_URL",
+    "model": "tram_can",
+    "group_id": "moda-weight-reader",
+    "output_root": "/workspace/traffic/weight_result",
+    "worker_count": 2,
+    "event_timeout_seconds": 75,
+    "max_attempts": 2,
+    "retry_backoff_seconds": 2,
+    "cancellation_grace_seconds": 3,
+    "camera_open_timeout_ms": 5000,
+    "camera_read_timeout_ms": 5000,
+    "model_startup_attempts": 10,
+    "model_startup_delay_seconds": 2,
+    "max_seconds": 60,
+    "confidence": 0.5,
+    "drop_threshold": 3000,
+    "max_drop_count": 70,
+    "crops": {
+      "in_gate1_land1": [400, 1388, 649, 1020],
+      "out_gate1_land1": [392, 1360, 645, 1053],
+      "in_gate1_land2": [2255, 3119, 787, 1183],
+      "out_gate1_land2": [2246, 3106, 821, 1165]
+    },
+    "analysis_codes": {
+      "in_gate1_land1": "weight_gate1_land1",
+      "out_gate1_land1": "weight_gate1_land1",
+      "in_gate1_land2": "weight_gate1_land2",
+      "out_gate1_land2": "weight_gate1_land2"
+    }
+  },
+  "cargo": {
+    "camera_url_envs": {
+      "in_gate1_land1": "MODA_CARGO_LAND1_CAMERA_URL",
+      "out_gate1_land1": "MODA_CARGO_LAND1_CAMERA_URL",
+      "in_gate1_land2": "MODA_CARGO_LAND2_CAMERA_URL",
+      "out_gate1_land2": "MODA_CARGO_LAND2_CAMERA_URL"
+    },
+    "detector_model": "thung_hang",
+    "classifier_model": "rock_classify",
+    "group_id": "moda-cargo-recognition",
+    "output_root": "/workspace/traffic/thung_hang",
+    "worker_count": 3,
+    "event_timeout_seconds": 120,
+    "max_attempts": 2,
+    "retry_backoff_seconds": 2,
+    "cancellation_grace_seconds": 3,
+    "camera_open_timeout_ms": 5000,
+    "camera_read_timeout_ms": 5000,
+    "model_startup_attempts": 10,
+    "model_startup_delay_seconds": 2,
+    "detection_confidence": 0.8,
+    "preferred_class_confidence": 0.7,
+    "settle_seconds": 5,
+    "capture_retries": 3,
+    "analysis_codes": {
+      "in_gate1_land1": "rock_gate1_land1",
+      "out_gate1_land1": "rock_gate1_land1",
+      "in_gate1_land2": "rock_gate1_land2",
+      "out_gate1_land2": "rock_gate1_land2"
+    }
+  }
+}

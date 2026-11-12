@@ -1,0 +1,35 @@
+[property]
+gpu-id=0
+net-scale-factor=0.0039215697906911373
+model-color-format=0
+
+onnx-file=lp.onnx
+
+
+model-engine-file=/cache/engines/plate_detection.engine
+# labelfile-path=labels.txt
+labelfile-path=labels.txt
+# force-implicit-batch-dim: implicit batch was removed in TensorRT 10
+
+batch-size=2
+gie-unique-id=2
+operate-on-gie-id=1
+
+process-mode=2
+network-type=0
+network-mode=2
+cluster-mode=2
+
+num-detected-classes=2
+interval=0
+maintain-aspect-ratio=1
+
+parse-bbox-func-name=NvDsInferParseYolo
+custom-lib-path=/opt/moda/libnvdsinfer_custom_impl_Yolo.so
+# TensorRT 10: engines are built by docker/prepare_engines.py (trtexec)
+#engine-create-func-name=NvDsInferYoloCudaEngineGet
+
+[class-attrs-all]
+nms-iou-threshold=0.45
+pre-cluster-threshold=0.25
+topk=100

@@ -1,0 +1,8 @@
+fastapi==0.115.6
+uvicorn==0.32.1
+pydantic==2.10.4
+cryptography==44.0.0
+PyYAML==6.0.2
+opencv-python-headless==4.10.0.84
+numpy<2
+kafka-python==2.0.2

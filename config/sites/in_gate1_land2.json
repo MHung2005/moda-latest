@@ -1,0 +1,26 @@
+{
+  "name": "in-gate1-land2",
+  "camera_url_envs": ["MODA_IN_GATE1_LAND2_CAMERA_URL"],
+  "trigger_codes": {"0": "in_gate1_land2"},
+  "capture_zones": {
+    "0": [[534, 1134], [1698, 1365], [1947, 896], [1202, 734]]
+  },
+  "inference_zones": {
+    "0": [[490, 1160], [1690, 1417], [2131, 552], [2190, 427], [1746, 317]]
+  },
+  "models": {
+    "tracker": "/home/jetson/models/tracker/config_tracker.txt",
+    "vehicle_detection": "/home/jetson/models/object_detection/infer.txt",
+    "plate_detection": "/home/jetson/models/plate_detection_with_logo/infer.txt",
+    "plate_recognition": "/home/jetson/models/plate_recognition/infer.txt"
+  },
+  "reference_plate_path": "../reference_plates/standard.txt",
+  "vehicle_confidence": 0.7,
+  "plate_character_confidence": 0.7,
+  "plate_collection_seconds": 5.0,
+  "video_fps": 30.0,
+  "output_topic": "VehicleDetection_Gate1",
+  "output_partition": 0,
+  "publish_timeout_seconds": 30,
+  "vehicle_image_root": "/data/vehicle"
+}
