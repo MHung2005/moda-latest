@@ -1,7 +1,7 @@
 {
-  "name": "in-gate1-land2",
-  "camera_url_envs": ["MODA_IN_GATE1_LAND2_CAMERA_URL"],
-  "trigger_codes": {"0": "in_gate1_land2"},
+  "name": "in-gate1-lane2",
+  "camera_url_envs": ["MODA_IN_GATE1_LANE2_CAMERA_URL"],
+  "trigger_codes": {"0": "in_gate1_lane2"},
   "capture_zones": {
     "0": [[534, 1134], [1698, 1365], [1947, 896], [1202, 734]]
   },
@@ -15,6 +15,7 @@
     "plate_recognition": "/home/jetson/models/plate_recognition/infer.txt"
   },
   "reference_plate_path": "../reference_plates/standard.txt",
+  "utc_offset_hours": 7,
   "vehicle_confidence": 0.7,
   "plate_character_confidence": 0.7,
   "plate_collection_seconds": 5.0,

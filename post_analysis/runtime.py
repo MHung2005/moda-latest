@@ -13,6 +13,7 @@ import traceback
 from typing import Callable
 
 from .config import KafkaConfig, WorkerConfig
+from .logs import configure_logging
 from .kafka import (
     commit_offsets,
     create_consumer,
@@ -101,6 +102,8 @@ def _worker_entry(
     stop_event,
     result: Connection,
 ) -> None:
+    # Spawned children do not inherit the parent's logging setup.
+    configure_logging()
     try:
         handler(handler_config, event, stop_event)
         result.send((True, ""))
@@ -181,6 +184,22 @@ def _failure_payload(
     }
 
 
+def describe(item: WorkItem) -> str:
+    """One-line identity of an event for logs: offset, lane, section and plate."""
+    event = item.event
+    section = str(event.get("section_id") or "")[:8] or "-"
+    return (
+        f"offset={item.source.offset} trigger={event.get('trigger_code') or '-'}"
+        f" section={section} plate={event.get('detected_object_id') or '-'}"
+    )
+
+
+def short_reason(reason: str) -> str:
+    """Last meaningful line of a traceback (the exception message)."""
+    lines = [line.strip() for line in reason.strip().splitlines() if line.strip()]
+    return lines[-1] if lines else reason
+
+
 def _publish_failure(
     producer,
     service_name: str,
@@ -219,23 +238,35 @@ def run_worker_service(
     def complete_failure(item: WorkItem, reason: str) -> None:
         _publish_failure(failure_producer, service_name, kafka, item, reason)
         tracker.complete(item.source)
+        logger.info(
+            "%s %s written to %s: %s",
+            service_name, describe(item), kafka.dead_letter_topic, short_reason(reason),
+        )
+
+    def start(item: WorkItem, item_key: str | None) -> None:
+        job = _start_job(handler, handler_config, item, item_key)
+        active[job_id(item)] = job
+        logger.info(
+            "%s start %s attempt=%s/%s pid=%s",
+            service_name, describe(item), item.attempt, worker.max_attempts, job.process.pid,
+        )
 
     def retry_or_fail(item: WorkItem, reason: str) -> None:
         if item.attempt < worker.max_attempts:
+            logger.warning(
+                "%s %s attempt %s/%s failed: %s",
+                service_name, describe(item), item.attempt, worker.max_attempts, short_reason(reason),
+            )
             item.attempt += 1
             delay = worker.retry_backoff_seconds * (2 ** (item.attempt - 2))
             item.ready_at = time.monotonic() + delay
             pending.append(item)
-            logger.warning(
-                "%s event offset %s failed; retry %s/%s in %.1fs",
-                service_name,
-                item.source.offset,
-                item.attempt,
-                worker.max_attempts,
-                delay,
-            )
+            logger.info("%s %s retry in %.1fs", service_name, describe(item), delay)
             return
-        logger.error("%s event failed permanently: %s", service_name, reason)
+        logger.error(
+            "%s %s failed permanently after %s attempt(s): %s\n%s",
+            service_name, describe(item), item.attempt, short_reason(reason), reason.rstrip(),
+        )
         complete_failure(item, reason)
 
     def commit_completed() -> None:
@@ -257,7 +288,11 @@ def run_worker_service(
                 elif now - job.started_at > worker.event_timeout_seconds:
                     _stop_job(job, worker.cancellation_grace_seconds)
                     del active[identifier]
-                    retry_or_fail(job.item, "Event processing deadline exceeded")
+                    retry_or_fail(
+                        job.item,
+                        f"Event processing deadline exceeded ({worker.event_timeout_seconds:.0f}s);"
+                        " see the worker's last [step] log line for where it hung",
+                    )
                     continue
                 elif not job.process.is_alive():
                     if job.result.poll(0.1):
@@ -275,6 +310,10 @@ def run_worker_service(
                 succeeded, error = outcome
                 if succeeded:
                     tracker.complete(job.item.source)
+                    logger.info(
+                        "%s done %s in %.1fs",
+                        service_name, describe(job.item), time.monotonic() - job.started_at,
+                    )
                 else:
                     retry_or_fail(job.item, error)
 
@@ -291,9 +330,7 @@ def run_worker_service(
                 ):
                     pending.append(item)
                     continue
-                active[job_id(item)] = _start_job(
-                    handler, handler_config, item, item_key
-                )
+                start(item, item_key)
 
             commit_completed()
 
@@ -317,6 +354,7 @@ def run_worker_service(
                         continue
 
                     item = WorkItem(source=source, event=event)
+                    logger.info("%s received %s", service_name, describe(item))
                     item_key = key_for(event)
                     if routing_key is not None and item_key is None:
                         complete_failure(item, "Unsupported or missing trigger_code")
@@ -326,6 +364,10 @@ def run_worker_service(
                         for identifier, existing in list(active.items()):
                             if existing.routing_key != item_key:
                                 continue
+                            logger.warning(
+                                "%s %s superseded by offset %s (same %s); cancelling it",
+                                service_name, describe(existing.item), source.offset, item_key,
+                            )
                             _stop_job(existing, worker.cancellation_grace_seconds)
                             del active[identifier]
                             complete_failure(
@@ -345,11 +387,12 @@ def run_worker_service(
                         pending = retained
 
                     if len(active) < worker.max_workers:
-                        active[job_id(item)] = _start_job(
-                            handler, handler_config, item, item_key
-                        )
+                        start(item, item_key)
                     else:
                         pending.append(item)
+                        logger.info(
+                            "%s queued %s (%s worker(s) busy)", service_name, describe(item), len(active)
+                        )
             commit_completed()
     finally:
         for job in active.values():

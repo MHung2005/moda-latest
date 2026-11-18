@@ -198,7 +198,7 @@ def import_from_files(conn: sqlite3.Connection, settings: Settings, *, force: bo
                 "output_topic": analysis["output_topic"],
                 "dead_letter_topic": analysis.get("dead_letter_topic", "AnalysisFailure_Gate1"),
                 "publish_timeout_seconds": analysis.get("publish_timeout_seconds", 30),
-                "utc_offset_hours": analysis.get("utc_offset_hours", 7),
+                "utc_offset_hours": analysis["utc_offset_hours"],
             },
         )
 

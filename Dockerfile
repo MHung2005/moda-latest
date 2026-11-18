@@ -29,8 +29,8 @@ RUN python3 -m pip install --no-cache-dir \
         kafka-python==2.0.2 \
         opencv-python-headless==4.10.0.84
 
-# YOLO bbox parser rebuilt for CUDA 12.6 / TensorRT 10 (the .so files under models/ were
-# built for JetPack 5). infer*.txt load it from /opt/moda.
+# YOLO bbox parser built for CUDA 12.6 / TensorRT 10 from the sources under models/
+# (no prebuilt .so is kept in the repository). infer*.txt load it from /opt/moda.
 COPY models/plate_recognition/nvdsinfer_custom_impl_Yolo/nvdsparsebbox_Yolo.cpp \
      models/plate_recognition/nvdsinfer_custom_impl_Yolo/nvdsparsebbox_Yolo_cuda.cu \
      models/plate_recognition/nvdsinfer_custom_impl_Yolo/utils.cpp \

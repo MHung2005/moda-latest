@@ -102,6 +102,7 @@ class VehicleDetection(DeepStreamPipeline):
         self.publish_timeout_seconds = site_config.publish_timeout_seconds
         self.video_fps = site_config.video_fps
         self.vehicle_image_root = site_config.vehicle_image_root
+        self.local_timezone = timezone(timedelta(hours=site_config.utc_offset_hours))
         self.trigger_codes = dict(site_config.trigger_codes)
         self.capture_zones = {
             key: list(value) for key, value in site_config.capture_zones.items()
@@ -132,8 +133,7 @@ class VehicleDetection(DeepStreamPipeline):
             f"{time.time_ns()}_{key.source_id}_{key.object_id}_"
             f"{plate_number}_{trigger_code}.jpg"
         )
-        local_timezone = timezone(timedelta(hours=7))
-        current_date = datetime.now(local_timezone).strftime("%Y%m%d")
+        current_date = datetime.now(self.local_timezone).strftime("%Y%m%d")
         folder_path = FilePath(self.vehicle_image_root) / current_date
         folder_path.mkdir(parents=True, exist_ok=True)
 

@@ -49,14 +49,14 @@ class PostAnalysisConfigTests(unittest.TestCase):
 class KafkaContractTests(unittest.TestCase):
     def test_result_preserves_trigger_and_replaces_analysis_fields(self):
         result = build_analysis_result(
-            {"trigger_code": "in_gate1_land1", "analysis_output": ""},
+            {"trigger_code": "in_gate1_lane1", "analysis_output": ""},
             analysis_cam_id=1,
-            analysis_code="weight_gate1_land1",
+            analysis_code="weight_gate1_lane1",
             analysis_image="/weight.jpg",
             analysis_output=12345,
         )
 
-        self.assertEqual(result["trigger_code"], "in_gate1_land1")
+        self.assertEqual(result["trigger_code"], "in_gate1_lane1")
         self.assertEqual(result["analysis_cam_id"], 1)
         self.assertEqual(result["analysis_output"], 12345)
 
@@ -136,6 +136,44 @@ class WeightLogicTests(unittest.TestCase):
         self.assertTrue(accumulator.early_stopped)
         self.assertEqual(accumulator.selected().value, 5_000)
         self.assertEqual(accumulator.selected().frame.name, "peak")
+
+
+class DiagnosticsTests(unittest.TestCase):
+    def test_crop_fits_detects_resolution_change(self):
+        from post_analysis.config import Crop
+        from post_analysis.weight_reader import crop_fits
+
+        drawn_on_3200x1800 = Crop(x_min=2255, x_max=3119, y_min=787, y_max=1183)
+        self.assertTrue(crop_fits(drawn_on_3200x1800, 3200, 1800))
+        self.assertFalse(crop_fits(drawn_on_3200x1800, 1920, 1080))
+
+    def test_read_stats_distinguishes_no_boxes_from_low_confidence(self):
+        from post_analysis.weight_reader import ReadStats
+
+        stats = ReadStats()
+        stats.observe([], None)
+        stats.observe([0.3, 0.2], None)
+        stats.observe([0.9], 15920)
+        stats.observe([0.9], 15920)
+
+        self.assertEqual(stats.frames, 4)
+        self.assertEqual(stats.frames_with_digit_boxes, 3)
+        self.assertEqual(stats.frames_with_value, 2)
+        self.assertIn("top_values=[15920x2]", stats.summary())
+        self.assertIn("best_digit_conf=0.90", stats.summary())
+
+    def test_failure_logs_use_exception_line_and_event_identity(self):
+        from post_analysis.runtime import describe, short_reason
+
+        reason = 'Traceback (most recent call last):\n  File "x"\nWeightStepError: [5/7 read] No valid\n'
+        self.assertEqual(short_reason(reason), "WeightStepError: [5/7 read] No valid")
+        item = WorkItem(
+            source=SourceRecord("VehicleDetection_Gate1", 0, 812),
+            event={"trigger_code": "in_gate1_lane1", "section_id": "abcdef123456", "detected_object_id": "29E90692"},
+        )
+        self.assertEqual(
+            describe(item), "offset=812 trigger=in_gate1_lane1 section=abcdef12 plate=29E90692"
+        )
 
 
 if __name__ == "__main__":

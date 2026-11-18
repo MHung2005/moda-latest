@@ -124,7 +124,7 @@ export default function WeightPage() {
           />
           {isAdmin && (
             <Space style={{ margin: "8px 0" }}>
-              <Input placeholder="trigger code mới, ví dụ in_gate2_land1" value={newTrigger} onChange={(e) => setNewTrigger(e.target.value)} />
+              <Input placeholder="trigger code mới, ví dụ in_gate2_lane1" value={newTrigger} onChange={(e) => setNewTrigger(e.target.value)} />
               <Button
                 icon={<PlusOutlined />}
                 disabled={!newTrigger || lanes.some((l) => l.trigger_code === newTrigger)}

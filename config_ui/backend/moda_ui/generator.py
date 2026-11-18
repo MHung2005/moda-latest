@@ -75,7 +75,13 @@ def _cameras(conn: sqlite3.Connection) -> dict[int, dict]:
     }
 
 
-def build_site(conn: sqlite3.Connection, site: dict, cameras: dict[int, dict], plate_files: dict[int, str]) -> dict:
+def build_site(
+    conn: sqlite3.Connection,
+    site: dict,
+    cameras: dict[int, dict],
+    plate_files: dict[int, str],
+    utc_offset_hours: int,
+) -> dict:
     sources = site["sources"]
     if not sources:
         raise GenerationError(f"Làn {site['code']} chưa có nguồn camera")
@@ -97,6 +103,8 @@ def build_site(conn: sqlite3.Connection, site: dict, cameras: dict[int, dict], p
             "plate_recognition": site["model_plate_recognition"],
         },
         "reference_plate_path": f"../reference_plates/{plate_files[site['reference_plate_list_id']]}",
+        # One time zone for the whole deployment: system_settings.utc_offset_hours.
+        "utc_offset_hours": utc_offset_hours,
         "vehicle_confidence": _number(site["vehicle_confidence"]),
         "plate_character_confidence": _number(site["plate_character_confidence"]),
         "plate_collection_seconds": float(site["plate_collection_seconds"]),
@@ -191,9 +199,11 @@ def build_files(conn: sqlite3.Connection, settings: Settings) -> dict[str, str]:
     plate_lists = repo.list_plate_lists(conn)
     plate_files = {item["id"]: item["file_name"] for item in plate_lists}
     files: dict[str, str] = {}
+    utc_offset_hours = _load_settings(conn, SystemSettings, None)["utc_offset_hours"]
 
     for site in repo.list_sites(conn):
-        files[f"{SITE_DIR}/{site['code']}.json"] = dump_json(build_site(conn, site, cameras, plate_files)) + "\n"
+        content = build_site(conn, site, cameras, plate_files, utc_offset_hours)
+        files[f"{SITE_DIR}/{site['code']}.json"] = dump_json(content) + "\n"
 
     for item in plate_lists:
         plates = repo.get_plates(conn, item["id"])

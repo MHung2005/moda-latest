@@ -8,6 +8,7 @@ from pathlib import Path
 import signal
 
 from .config import load_weight_config
+from .logs import configure_logging
 
 
 def _request_shutdown(_signum, _frame) -> None:
@@ -27,11 +28,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> None:
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(processName)s %(name)s: %(message)s",
-    )
-    logging.getLogger("ultralytics").setLevel(logging.WARNING)
+    configure_logging()
     signal.signal(signal.SIGTERM, _request_shutdown)
     args = parse_args(argv)
     try:

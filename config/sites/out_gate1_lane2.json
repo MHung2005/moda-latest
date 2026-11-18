@@ -1,7 +1,7 @@
 {
-  "name": "out-gate1-land2",
-  "camera_url_envs": ["MODA_OUT_GATE1_LAND2_CAMERA_URL"],
-  "trigger_codes": {"0": "out_gate1_land2"},
+  "name": "out-gate1-lane2",
+  "camera_url_envs": ["MODA_OUT_GATE1_LANE2_CAMERA_URL"],
+  "trigger_codes": {"0": "out_gate1_lane2"},
   "capture_zones": {
     "0": [[835, 896], [1176, 1391], [2366, 1009], [1598, 632]]
   },
@@ -10,11 +10,12 @@
   },
   "models": {
     "tracker": "/home/jetson/models/tracker/config_tracker.txt",
-    "vehicle_detection": "/home/jetson/models/object_detection/infer_out_land2.txt",
+    "vehicle_detection": "/home/jetson/models/object_detection/infer_out_lane2.txt",
     "plate_detection": "/home/jetson/models/plate_detection_with_logo/infer.txt",
     "plate_recognition": "/home/jetson/models/plate_recognition/infer.txt"
   },
   "reference_plate_path": "../reference_plates/lane2.txt",
+  "utc_offset_hours": 7,
   "vehicle_confidence": 0.7,
   "plate_character_confidence": 0.7,
   "plate_collection_seconds": 5.0,

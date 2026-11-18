@@ -70,7 +70,7 @@ docker compose -f compose.ui.yaml --env-file .env.ui up -d
 recreate **một lần** để nhận mount mới, ví dụ:
 
 ```bash
-docker compose up -d in_gate1_land1
+docker compose up -d in_gate1_lane1
 ```
 
 Mở `http://<ip-jetson>:8080`.

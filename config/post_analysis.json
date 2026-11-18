@@ -25,16 +25,16 @@
     "drop_threshold": 3000,
     "max_drop_count": 70,
     "crops": {
-      "in_gate1_land1": [400, 1388, 649, 1020],
-      "out_gate1_land1": [392, 1360, 645, 1053],
-      "in_gate1_land2": [2255, 3119, 787, 1183],
-      "out_gate1_land2": [2246, 3106, 821, 1165]
+      "in_gate1_lane1": [211, 837, 387, 619],
+      "out_gate1_lane1": [224, 828, 380, 602],
+      "in_gate1_lane2": [1344, 1855, 467, 698],
+      "out_gate1_lane2": [1354, 1866, 485, 708]
     },
     "analysis_codes": {
-      "in_gate1_land1": "weight_gate1_land1",
-      "out_gate1_land1": "weight_gate1_land1",
-      "in_gate1_land2": "weight_gate1_land2",
-      "out_gate1_land2": "weight_gate1_land2"
+      "in_gate1_lane1": "weight_gate1_lane1",
+      "out_gate1_lane1": "weight_gate1_lane1",
+      "in_gate1_lane2": "weight_gate1_lane2",
+      "out_gate1_lane2": "weight_gate1_lane2"
     }
   }
 }

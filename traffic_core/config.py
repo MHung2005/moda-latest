@@ -30,6 +30,8 @@ class SiteConfig:
     plate_detection_config_path: str
     plate_recognition_config_path: str
     reference_plate_path: str
+    # Local time zone of the site (dated image folders). Required: never assume one.
+    utc_offset_hours: int
     vehicle_confidence: float = 0.8
     plate_character_confidence: float = 0.8
     plate_collection_seconds: float = 4.0
@@ -78,6 +80,16 @@ def _resolve_path(config_path: Path, value: object, field_name: str) -> str:
     if not path.is_absolute():
         path = (config_path.parent / path).resolve()
     return str(path)
+
+
+def read_utc_offset_hours(raw: dict) -> int:
+    """Whole-hour UTC offset of the site; shared rule with post_analysis.config."""
+    value = raw.get("utc_offset_hours")
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise SiteConfigError("utc_offset_hours must be an integer number of hours")
+    if not -23 <= value <= 23:
+        raise SiteConfigError("utc_offset_hours must be between -23 and 23")
+    return value
 
 
 def _read_environment(
@@ -130,6 +142,7 @@ def load_site_config(
         "inference_zones",
         "models",
         "reference_plate_path",
+        "utc_offset_hours",
     }
     missing_fields = sorted(required.difference(raw))
     if missing_fields:
@@ -218,6 +231,7 @@ def load_site_config(
             raw["reference_plate_path"],
             "reference_plate_path",
         ),
+        utc_offset_hours=read_utc_offset_hours(raw),
         vehicle_confidence=vehicle_confidence,
         plate_character_confidence=plate_confidence,
         plate_collection_seconds=collection_seconds,

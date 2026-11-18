@@ -20,8 +20,17 @@ Detector có watchdog cho camera: nếu một nguồn RTSP không gửi frame tr
 `MODA_SOURCE_STARTUP_SECONDS` (mặc định 120 s), tiến trình thoát với mã lỗi để Docker
 (`restart: unless-stopped`) khởi động lại. RTSP qua TCP có thể treo mà không báo lỗi.
 
-## Cấu trúc
+Múi giờ không được viết cứng trong code: `utc_offset_hours` (số giờ nguyên, -23..23) là trường
+**bắt buộc** trong mọi `config/sites/*.json` và `config/post_analysis.json`; thiếu thì service từ
+chối khởi động. Khi dùng `config_ui`, giá trị này lấy từ màn hình Hệ thống và được sinh vào mọi
+file. `timestamp` trong event Kafka luôn là UTC; chỉ thư mục ảnh theo ngày dùng giờ địa phương.
 
+Tên làn dùng thống nhất `lane`: service/trigger code `{in,out}_gate1_lane{1,2}`, analysis code
+`weight_gate1_lane{1,2}`, biến môi trường `MODA_{IN,OUT}_GATE1_LANE{1,2}_CAMERA_URL`. Từ
+2026-11-18 tên cũ `*_land*` đã được đổi ở mọi nơi, kể cả giá trị trên Kafka; consumer bên ngoài
+đang lọc theo `land1`/`land2` phải chuyển sang `lane1`/`lane2`.
+
+## Cấu trúc
 ```text
 traffic_core/                 Runtime DeepStream dùng chung cho bốn camera/làn
 post_analysis/                Runtime đọc cân
@@ -47,13 +56,13 @@ Bản này chạy trên JetPack 6.2 (L4T R36.4). So với bản JetPack 5 / Deep
 
 - `Dockerfile`: base `deepstream:7.1-triton-multiarch`, `pyds 1.2.0` (Python 3.10), `numpy<2`.
 - Parser YOLO (`NvDsInferParseYolo`) được build lại trong image vào
-  `/opt/moda/libnvdsinfer_custom_impl_Yolo.so` (`docker/yolo_parser.mk`); các file `.so`
-  trong `models/` là bản JetPack 5 và không còn được dùng.
+  `/opt/moda/libnvdsinfer_custom_impl_Yolo.so` (`docker/yolo_parser.mk`). Các file `.so` bản
+  JetPack 5 trong `models/` đã được xóa; `.gitignore` chặn commit lại `*.so`.
 - TensorRT 10 bỏ API build engine của DeepStream-Yolo, nên `engine-create-func-name` bị tắt;
   `docker/prepare_engines.py` (chạy trong `docker/entrypoint.sh`) build engine bằng `trtexec`
   vào `runtime/engines` ở lần chạy đầu và tự xóa engine cũ khi phiên bản TensorRT đổi.
 - `models/tracker/config_tracker.yml` đã chuyển sang định dạng NvDCF của DeepStream 7.1
-  (bản cũ: `config_tracker.ds5.yml.bak`).
+  (bản DeepStream 6.x cũ còn trong lịch sử git, commit `3428528`).
 - Image phân tích dùng Ultralytics `jetson-jetpack6`.
 
 ## Chạy detector DeepStream
@@ -61,18 +70,18 @@ Bản này chạy trên JetPack 6.2 (L4T R36.4). So với bản JetPack 5 / Deep
 Mỗi Jetson chỉ nên khởi động detector mà nó phụ trách, ví dụ:
 
 ```bash
-docker compose up -d --build in_gate1_land1
+docker compose up -d --build in_gate1_lane1
 ```
 
-Các detector hợp lệ là `in_gate1_land1`, `in_gate1_land2`, `out_gate1_land1` và
-`out_gate1_land2`. Model được mount read-only từ `./models` vào `/home/jetson/models`.
+Các detector hợp lệ là `in_gate1_lane1`, `in_gate1_lane2`, `out_gate1_lane1` và
+`out_gate1_lane2`. Model được mount read-only từ `./models` vào `/home/jetson/models`.
 Engine TensorRT sinh từ ONNX được ghi riêng vào `runtime/engines`; lần chạy đầu có thể mất
 thêm thời gian để build engine, các lần sau dùng lại cache này.
 
 Có thể chạy trực tiếp trong môi trường đã cài DeepStream 7.1 (cần tự build parser và engine như `docker/`):
 
 ```bash
-python3 -m traffic_core --site config/sites/in_gate1_land1.json --gpu 0
+python3 -m traffic_core --site config/sites/in_gate1_lane1.json --gpu 0
 ```
 
 ## Chạy service sau DeepStream

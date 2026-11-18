@@ -8,17 +8,22 @@ __pycache__/
 *.avi
 *.engine
 *.o
+*.so
+*.bak
+*.bak-*
+*.before-*
 
 # Keep obsolete/training model variants local. Only models referenced by the
 # current DeepStream and Triton configuration are versioned.
 models/**/*.onnx
 models/**/*.pt
 !models/object_detection/vehicle_update_side_fix.onnx
-!models/object_detection/in_land2.onnx
-!models/object_detection/out_land1.onnx
-!models/object_detection/out_land2.onnx
+!models/object_detection/in_lane2.onnx
+!models/object_detection/out_lane1.onnx
+!models/object_detection/out_lane2.onnx
 !models/plate_detection_with_logo/lp.onnx
 !models/plate_recognition/best224.onnx
+!models/plate_recognition/yolo26n_doc_bien_ds.onnx
 !models/triton/tram_can/1/model.onnx
 
 vehicle/

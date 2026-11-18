@@ -6,9 +6,9 @@ model-color-format=0
 # onnx-file=best.onnx
 # model-engine-file=model_b1_gpu0_fp16_new.engine
 
-onnx-file=out_land1.onnx
+onnx-file=out_lane1.onnx
 #model-engine-file=vehicle_update_side_fix_b03_moda.engine
-model-engine-file=/cache/engines/out_gate1_land1.engine
+model-engine-file=/cache/engines/out_gate1_lane1.engine
 labelfile-path=labels.txt
 
 batch-size=1

@@ -81,23 +81,23 @@ class RoundTripTests(ProjectCase):
     def test_env_contains_decrypted_camera_urls(self):
         files = build_files(self.conn, self.settings)
         env = env_values_for_runtime(files[".env"])
-        self.assertTrue(env["MODA_IN_GATE1_LAND1_CAMERA_URL"].startswith("rtsp://"))
+        self.assertTrue(env["MODA_IN_GATE1_LANE1_CAMERA_URL"].startswith("rtsp://"))
         analysis = env_values_for_runtime(files[".env.jetson"])
         self.assertIn("MODA_WEIGHT_CAMERA_URL", analysis)
         self.assertIn("MODA_ANALYSIS_BASE_IMAGE", analysis)  # unrelated keys are kept
 
     def test_confidence_change_affects_only_that_detector(self):
-        site = repo.get_site(self.conn, "in_gate1_land1")
+        site = repo.get_site(self.conn, "in_gate1_lane1")
         data = schemas.SiteIn(**{key: site[key] for key in schemas.SiteIn.model_fields})
         data.vehicle_confidence = 0.55
-        repo.update_site(self.conn, "in_gate1_land1", data)
+        repo.update_site(self.conn, "in_gate1_lane1", data)
         # Write the baseline files first so only the confidence differs.
         baseline = build_files(self.conn, self.settings)
         result = applier.preview(self.conn, self.settings)
         current = {path: baseline[path] for path in baseline}
-        current["config/sites/in_gate1_land1.json"] = "{}"
+        current["config/sites/in_gate1_lane1.json"] = "{}"
         services = applier.affected_services(self.conn, self.settings, baseline, current)
-        self.assertEqual({"in_gate1_land1"}, services["detector"])
+        self.assertEqual({"in_gate1_lane1"}, services["detector"])
         self.assertEqual(set(), services["analysis"])
         self.assertEqual([], result["errors"])
 
@@ -118,13 +118,13 @@ class RoundTripTests(ProjectCase):
         self.assertEqual(set(), services["detector"])
 
     def test_zone_outside_stream_is_rejected_by_validation(self):
-        repo.set_zone(self.conn, "in_gate1_land1", 0, "capture", [[0, 0], [5000, 0], [10, 10]])
+        repo.set_zone(self.conn, "in_gate1_lane1", 0, "capture", [[0, 0], [5000, 0], [10, 10]])
         errors = validate_files(self.settings, build_files(self.conn, self.settings))
         self.assertTrue(any("ngoài khung" in error for error in errors))
 
     def test_snapshot_roundtrip(self):
         snapshot = repo.export_snapshot(self.conn)
-        repo.set_zone(self.conn, "in_gate1_land1", 0, "capture", [[1, 1], [2, 1], [2, 2]])
+        repo.set_zone(self.conn, "in_gate1_lane1", 0, "capture", [[1, 1], [2, 1], [2, 2]])
         repo.import_snapshot(self.conn, snapshot)
         self.assertEqual(snapshot, repo.export_snapshot(self.conn))
 
@@ -137,7 +137,7 @@ class ApplyTests(ProjectCase):
 
         from moda_ui import docker_ops
 
-        deployed = {"in_gate1_land1", "weight_reader"}
+        deployed = {"in_gate1_lane1", "weight_reader"}
         calls: list[list[str]] = []
 
         def states(_settings, project):
@@ -166,10 +166,10 @@ class ApplyTests(ProjectCase):
             path.write_text(content, encoding="utf-8")
 
     def _change_confidence(self):
-        site = repo.get_site(self.conn, "in_gate1_land1")
+        site = repo.get_site(self.conn, "in_gate1_lane1")
         data = schemas.SiteIn(**{key: site[key] for key in schemas.SiteIn.model_fields})
         data.vehicle_confidence = 0.42
-        repo.update_site(self.conn, "in_gate1_land1", data)
+        repo.update_site(self.conn, "in_gate1_lane1", data)
 
     def test_apply_writes_file_and_recreates_only_affected_deployed_service(self):
         self._write_baseline()
@@ -177,29 +177,29 @@ class ApplyTests(ProjectCase):
         self._change_confidence()
         result = applier.apply(self.conn, self.settings, user_id=None, note="t")
         self.assertTrue(result["ok"], result)
-        self.assertEqual([["in_gate1_land1"]], calls)
-        written = json.loads((self.root / "config/sites/in_gate1_land1.json").read_text(encoding="utf-8"))
+        self.assertEqual([["in_gate1_lane1"]], calls)
+        written = json.loads((self.root / "config/sites/in_gate1_lane1.json").read_text(encoding="utf-8"))
         self.assertEqual(0.42, written["vehicle_confidence"])
         self.assertEqual("applied", repo.list_revisions(self.conn)[0]["status"])
 
     def test_failed_health_check_restores_previous_files(self):
         self._write_baseline()
-        before = (self.root / "config/sites/in_gate1_land1.json").read_text(encoding="utf-8")
+        before = (self.root / "config/sites/in_gate1_lane1.json").read_text(encoding="utf-8")
         calls = self._fake_docker(healthy=False)
         self._change_confidence()
         result = applier.apply(self.conn, self.settings, user_id=None, note="t")
         self.assertFalse(result["ok"])
-        self.assertEqual(before, (self.root / "config/sites/in_gate1_land1.json").read_text(encoding="utf-8"))
-        self.assertEqual([["in_gate1_land1"], ["in_gate1_land1"]], calls)  # new config, then old again
+        self.assertEqual(before, (self.root / "config/sites/in_gate1_lane1.json").read_text(encoding="utf-8"))
+        self.assertEqual([["in_gate1_lane1"], ["in_gate1_lane1"]], calls)  # new config, then old again
         self.assertEqual("failed", repo.list_revisions(self.conn)[0]["status"])
 
     def test_invalid_config_is_rejected_before_writing(self):
         self._write_baseline()
         self._fake_docker(healthy=True)
-        repo.set_zone(self.conn, "in_gate1_land1", 0, "capture", [[0, 0], [9000, 0], [10, 10]])
+        repo.set_zone(self.conn, "in_gate1_lane1", 0, "capture", [[0, 0], [9000, 0], [10, 10]])
         with self.assertRaises(applier.ApplyRejected):
             applier.apply(self.conn, self.settings, user_id=None, note="t")
-        written = json.loads((self.root / "config/sites/in_gate1_land1.json").read_text(encoding="utf-8"))
+        written = json.loads((self.root / "config/sites/in_gate1_lane1.json").read_text(encoding="utf-8"))
         self.assertNotIn([9000, 0], written["capture_zones"]["0"])
 
     def test_rollback_restores_previous_revision(self):
@@ -215,9 +215,9 @@ class ApplyTests(ProjectCase):
 
         result = applier.rollback(self.conn, self.settings, baseline, user_id=None)
         self.assertTrue(result["ok"], result)
-        written = json.loads((self.root / "config/sites/in_gate1_land1.json").read_text(encoding="utf-8"))
+        written = json.loads((self.root / "config/sites/in_gate1_lane1.json").read_text(encoding="utf-8"))
         self.assertEqual(0.7, written["vehicle_confidence"])
-        self.assertEqual(0.7, repo.get_site(self.conn, "in_gate1_land1")["vehicle_confidence"])
+        self.assertEqual(0.7, repo.get_site(self.conn, "in_gate1_lane1")["vehicle_confidence"])
         statuses = {r["id"]: r["status"] for r in repo.list_revisions(self.conn)}
         self.assertEqual("rolled_back", statuses[changed["revision_id"]])
         self.assertEqual("applied", statuses[result["revision_id"]])

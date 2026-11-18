@@ -196,9 +196,10 @@ def _load_common(
         raw.get("triton_url_env", "MODA_TRITON_URL"),
         "triton_url_env",
     )
-    utc_offset_hours = _number(
-        raw.get("utc_offset_hours", 7), "utc_offset_hours", int
-    )
+    # Required, same rule as traffic_core.config.read_utc_offset_hours: never assume a zone.
+    utc_offset_hours = raw.get("utc_offset_hours")
+    if isinstance(utc_offset_hours, bool) or not isinstance(utc_offset_hours, int):
+        raise AnalysisConfigError("utc_offset_hours must be an integer number of hours")
     if not -23 <= utc_offset_hours <= 23:
         raise AnalysisConfigError("utc_offset_hours must be between -23 and 23")
     return kafka, worker, io, triton_url, utc_offset_hours

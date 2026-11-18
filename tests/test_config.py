@@ -28,8 +28,33 @@ class SiteConfigTests(unittest.TestCase):
                 "plate_recognition": "/models/characters.txt",
             },
             "reference_plate_path": "reference.txt",
+            "utc_offset_hours": 7,
             "vehicle_confidence": 0.8,
         }
+
+    ENVIRONMENT = {
+        "TEST_CAMERA_URL": "rtsp://camera",
+        "MODA_KAFKA_BOOTSTRAP_SERVERS": "kafka:9092",
+    }
+
+    def test_utc_offset_is_read_from_config(self):
+        raw = self.valid_config()
+        raw["utc_offset_hours"] = -3
+        config = load_site_config(self.write_config(raw), self.ENVIRONMENT)
+        self.assertEqual(config.utc_offset_hours, -3)
+
+    def test_utc_offset_is_required(self):
+        raw = self.valid_config()
+        del raw["utc_offset_hours"]
+        with self.assertRaisesRegex(SiteConfigError, "utc_offset_hours"):
+            load_site_config(self.write_config(raw), self.ENVIRONMENT)
+
+    def test_utc_offset_must_be_whole_hours_in_range(self):
+        for value in (7.5, "7", True, 24):
+            raw = self.valid_config()
+            raw["utc_offset_hours"] = value
+            with self.subTest(value=value), self.assertRaisesRegex(SiteConfigError, "utc_offset_hours"):
+                load_site_config(self.write_config(raw), self.ENVIRONMENT)
 
     def test_loads_and_resolves_camera_from_environment(self):
         config = load_site_config(

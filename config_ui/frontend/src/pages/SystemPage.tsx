@@ -50,8 +50,12 @@ export default function SystemPage() {
                 </Form.Item>
               </Col>
               <Col span={6}>
-                <Form.Item name="utc_offset_hours" label={<FieldLabel label="Múi giờ" field="utc_offset_hours" />}>
-                  <InputNumber min={-23} max={23} style={{ width: "100%" }} />
+                <Form.Item
+                  name="utc_offset_hours"
+                  label={<FieldLabel label="Múi giờ (UTC±giờ)" field="utc_offset_hours" />}
+                  tooltip="Dùng chung cho mọi detector và đọc cân: thư mục ảnh theo ngày giờ địa phương. Đổi giá trị sẽ recreate tất cả service."
+                >
+                  <InputNumber min={-23} max={23} precision={0} style={{ width: "100%" }} />
                 </Form.Item>
               </Col>
             </Row>

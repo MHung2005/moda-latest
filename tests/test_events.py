@@ -27,7 +27,7 @@ class VehicleEventTests(unittest.TestCase):
     def test_preserves_legacy_payload_contract(self):
         message = build_vehicle_message(
             source_id=0,
-            trigger_code="out_gate1_land1",
+            trigger_code="out_gate1_lane1",
             section_id="section-1",
             plate_number="30A12345",
             image_path="vehicle/20261012/image.jpg",
@@ -47,7 +47,7 @@ class VehicleEventTests(unittest.TestCase):
 
     def test_trigger_publish_waits_for_broker_acknowledgement(self):
         producer = FakeProducer()
-        payload = {"trigger_code": "in_gate1_land1"}
+        payload = {"trigger_code": "in_gate1_lane1"}
 
         metadata = publish(
             producer,

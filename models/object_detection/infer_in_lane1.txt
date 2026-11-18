@@ -8,7 +8,7 @@ model-color-format=0
 
 onnx-file=vehicle_update_side_fix.onnx
 #model-engine-file=vehicle_update_side_fix_b03_moda.engine
-model-engine-file=/cache/engines/in_gate1_land1.engine
+model-engine-file=/cache/engines/in_gate1_lane1.engine
 labelfile-path=labels.txt
 
 batch-size=1
