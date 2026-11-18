@@ -43,60 +43,86 @@ class Reading:
     index: int
 
 
-class WeightAccumulator:
-    """Keep exact frequency statistics while retaining at most three image frames.
+SELECTION_WINDOW = 3000
+# A value must be read this many times before it can be the peak, so a single misread
+# (an extra digit, 1 read as 7) cannot drag the selection window away from the real weight.
+MIN_PEAK_COUNT = 2
 
-    An empty scale shows 0, which can dominate the readings when the vehicle is only on
-    the scale briefly. Zero is therefore reported only if no non-zero value was read.
+
+class WeightAccumulator:
+    """Pick the weight as the most frequent value within [peak - 3000, peak].
+
+    peak = largest value read at least MIN_PEAK_COUNT times; if no value repeated yet,
+    the largest value read. One rule for every case: zero (empty scale) and the values
+    read while the vehicle drives on/off the scale fall outside the window. Frequency
+    ties go to the latest reading.
+
+    Frames: one (the latest) per value that is in the window or above the peak (a value
+    above the peak may still become the peak). Others are discarded when the peak rises.
+
+    drop_threshold / max_drop_count only decide when to stop reading early.
     """
 
-    def __init__(self, drop_threshold: int, max_drop_count: int) -> None:
+    def __init__(
+        self,
+        drop_threshold: int,
+        max_drop_count: int,
+        window: int | float = SELECTION_WINDOW,
+        min_peak_count: int = MIN_PEAK_COUNT,
+    ) -> None:
         self._counts: Counter = Counter()
-        self._mode: Reading | None = None
-        self._mode_score = (0, -1)
-        self._nonzero_mode: Reading | None = None
-        self._nonzero_mode_score = (0, -1)
-        self._peak: Reading | None = None
+        self._latest: dict[int | float, Reading] = {}
+        self._confirmed_peak: int | float | None = None
+        self._raw_peak: int | float | None = None
+        self._window = window
+        self._min_peak_count = min_peak_count
         self._drop_threshold = drop_threshold
         self._max_drop_count = max_drop_count
         self._consecutive_drops = 0
         self.early_stopped = False
         self.reading_count = 0
 
+    @property
+    def peak(self) -> int | float | None:
+        return self._confirmed_peak if self._confirmed_peak is not None else self._raw_peak
+
+    def _keep_frame(self, value: int | float) -> bool:
+        peak = self.peak
+        return peak is not None and value >= peak - self._window
+
     def add(self, value: int | float, frame) -> None:
         index = self.reading_count
         self.reading_count += 1
         self._counts[value] += 1
-        score = self._counts[value], index
+        previous_peak = self.peak
 
-        becomes_mode = score >= self._mode_score
-        becomes_nonzero_mode = value != 0 and score >= self._nonzero_mode_score
-        becomes_peak = self._peak is None or value > self._peak.value
-        snapshot = None
-        if becomes_mode or becomes_nonzero_mode or becomes_peak:
-            snapshot = Reading(value=value, frame=frame.copy(), index=index)
+        if self._raw_peak is None or value > self._raw_peak:
+            self._raw_peak = value
+        if self._counts[value] >= self._min_peak_count and (
+            self._confirmed_peak is None or value > self._confirmed_peak
+        ):
+            self._confirmed_peak = value
 
-        if becomes_mode:
-            self._mode = snapshot
-            self._mode_score = score
-        if becomes_nonzero_mode:
-            self._nonzero_mode = snapshot
-            self._nonzero_mode_score = score
-        if becomes_peak:
-            self._peak = snapshot
+        peak = self.peak
+        if peak != previous_peak:
             self._consecutive_drops = 0
-        elif self._peak is not None and self._peak.value - value > self._drop_threshold:
+            self._latest = {v: r for v, r in self._latest.items() if self._keep_frame(v)}
+        elif peak - value > self._drop_threshold:
             self._consecutive_drops += 1
         else:
             self._consecutive_drops = 0
 
+        if self._keep_frame(value):
+            self._latest[value] = Reading(value=value, frame=frame.copy(), index=index)
+
         self.early_stopped = self._consecutive_drops >= self._max_drop_count
 
     def selected(self) -> Reading | None:
-        if self.early_stopped:
-            return self._peak
-        # Prefer the most frequent non-zero value; fall back to 0 only if nothing else was read.
-        return self._nonzero_mode or self._mode
+        peak = self.peak
+        candidates = [r for v, r in self._latest.items() if peak is not None and v <= peak]
+        if not candidates:
+            return None
+        return max(candidates, key=lambda reading: (self._counts[reading.value], reading.index))
 
 
 def calculate_iou(box1: tuple[int, int, int, int], box2: tuple[int, int, int, int]) -> float:

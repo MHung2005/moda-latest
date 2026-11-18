@@ -233,8 +233,9 @@ worker process (spawn) weight_reader.process_event(config, event, stop_event):
        lcd = frame[y_min:y_max, x_min:x_max]; value = read_digits(model(lcd), confidence)
        (boxes conf ≥ thr, class 0..9, greedy NMS IoU<0.5, sort by x_min, int(join); >100000 → /10)
        None → frame ignored; else accumulator.add; early_stopped → break
-  selected = peak if early stop (drop > drop_threshold for max_drop_count consecutive readings)
-             else most frequent non-zero value, else most frequent (0)
+  selected = most frequent value in [peak - 3000, peak] (SELECTION_WINDOW; tie → latest reading);
+             peak = largest value read ≥ MIN_PEAK_COUNT (2) times, else largest value (guards one-off misreads)
+             early stop (drop > drop_threshold for max_drop_count consecutive readings) only ends the loop
   imwrite <output_root>/<YYYYMMDD local>/weight_<trigger_code>_<time.time()>.jpg (the LCD crop)
   publish build_analysis_result(event, analysis_cam_id=1, analysis_code=analysis_codes[trigger_code],
           analysis_image=path, analysis_output=value) with a fresh producer → close

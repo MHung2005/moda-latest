@@ -127,15 +127,73 @@ class WeightLogicTests(unittest.TestCase):
         self.assertEqual(accumulator.selected().value, 0)
         self.assertEqual(accumulator.selected().frame.name, "last")
 
-    def test_accumulator_uses_peak_after_sustained_drop(self):
+    def test_accumulator_after_sustained_drop_uses_window_mode(self):
         accumulator = WeightAccumulator(drop_threshold=100, max_drop_count=2)
         accumulator.add(5_000, FakeFrame("peak"))
         accumulator.add(4_000, FakeFrame("drop-1"))
         accumulator.add(4_100, FakeFrame("drop-2"))
 
         self.assertTrue(accumulator.early_stopped)
-        self.assertEqual(accumulator.selected().value, 5_000)
-        self.assertEqual(accumulator.selected().frame.name, "peak")
+        # 4_000 and 4_100 are inside [2_000, 5_000]; all seen once -> latest wins.
+        self.assertEqual(accumulator.selected().value, 4_100)
+
+    def test_accumulator_mode_within_window_of_peak(self):
+        accumulator = WeightAccumulator(drop_threshold=3000, max_drop_count=70)
+        readings = (
+            [(0, "empty")] * 10          # empty scale, most frequent overall
+            + [(12_000, "ramp")] * 6     # driving on: outside [29_600, 32_600]
+            + [(32_500, "stable")] * 4
+            + [(32_600, "peak")] * 2
+            + [(30_000, "settle")] * 3
+        )
+        for value, name in readings:
+            accumulator.add(value, FakeFrame(name))
+
+        selected = accumulator.selected()
+
+        self.assertEqual(selected.value, 32_500)
+        self.assertEqual(selected.frame.name, "stable")
+
+    def test_accumulator_drops_frames_outside_window(self):
+        accumulator = WeightAccumulator(drop_threshold=3000, max_drop_count=70)
+        for value in (0, 1_000, 10_000, 20_000, 30_000):
+            accumulator.add(value, FakeFrame(str(value)))
+
+        self.assertEqual(set(accumulator._latest), {30_000})
+
+    def test_accumulator_ignores_single_misread_above_real_weight(self):
+        accumulator = WeightAccumulator(drop_threshold=3000, max_drop_count=70)
+        readings = (
+            [(32_500, "real")] * 3
+            + [(92_500, "misread")]      # seen once: cannot become the peak
+            + [(32_500, "real-last")]
+        )
+        for value, name in readings:
+            accumulator.add(value, FakeFrame(name))
+
+        self.assertEqual(accumulator.peak, 32_500)
+        self.assertEqual(accumulator.selected().value, 32_500)
+        self.assertEqual(accumulator.selected().frame.name, "real-last")
+
+    def test_accumulator_repeated_high_value_becomes_peak(self):
+        accumulator = WeightAccumulator(drop_threshold=3000, max_drop_count=70)
+        for value, name in [(20_000, "a")] * 3 + [(32_500, "b"), (32_500, "c")]:
+            accumulator.add(value, FakeFrame(name))
+
+        self.assertEqual(accumulator.peak, 32_500)
+        self.assertEqual(accumulator.selected().value, 32_500)
+
+    def test_accumulator_uses_raw_peak_when_nothing_repeats(self):
+        accumulator = WeightAccumulator(drop_threshold=3000, max_drop_count=70)
+        for value in (100, 31_000, 32_000):
+            accumulator.add(value, FakeFrame(str(value)))
+
+        self.assertEqual(accumulator.peak, 32_000)
+        self.assertEqual(accumulator.selected().value, 32_000)
+
+    def test_accumulator_returns_none_without_readings(self):
+        accumulator = WeightAccumulator(drop_threshold=3000, max_drop_count=70)
+        self.assertIsNone(accumulator.selected())
 
 
 class DiagnosticsTests(unittest.TestCase):
