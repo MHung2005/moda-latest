@@ -15,6 +15,11 @@ Camera làn xe -> traffic_core (DeepStream) -> VehicleDetection_Gate1
 `weight_reader` là Kafka consumer độc lập. Nó không được import bởi `traffic_core`;
 topic Kafka là seam giữa các module.
 
+Detector có watchdog cho camera: nếu một nguồn RTSP không gửi frame trong
+`MODA_SOURCE_STALL_SECONDS` (mặc định 60 s), hoặc chưa có frame đầu tiên sau
+`MODA_SOURCE_STARTUP_SECONDS` (mặc định 120 s), tiến trình thoát với mã lỗi để Docker
+(`restart: unless-stopped`) khởi động lại. RTSP qua TCP có thể treo mà không báo lỗi.
+
 ## Cấu trúc
 
 ```text

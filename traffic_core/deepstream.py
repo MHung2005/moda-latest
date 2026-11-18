@@ -6,6 +6,7 @@ import configparser
 import ctypes
 import logging
 import os
+import threading
 
 import gi
 
@@ -15,7 +16,9 @@ GST_HELPER_LIB = ctypes.CDLL(
 )
 
 gi.require_version("Gst", "1.0")
-from gi.repository import GObject, Gst
+from gi.repository import GLib, GObject, Gst
+
+from .watchdog import StallWatchdog
 
 
 logger = logging.getLogger(__name__)
@@ -27,6 +30,11 @@ class DeepStreamPipeline:
     MAX_SOURCES = 4
     IMAGE_WIDTH = 2688
     IMAGE_HEIGHT = 1520
+    WATCHDOG_INTERVAL_SECONDS = 5
+    # If tearing down a stalled RTSP source hangs, exit anyway so Docker restarts us.
+    STALL_HARD_EXIT_SECONDS = 30
+    watchdog: StallWatchdog | None = None
+    stalled_sources: list[tuple[int, float, bool]] = []
 
     def __init__(self) -> None:
         self.tracker_config = ""
@@ -147,9 +155,37 @@ class DeepStreamPipeline:
                     reason = f"Stream EOS for stream {stream_id}; removing source."
                     logger.info(reason)
                     self._remove_source(stream_id)
+                    if self.watchdog is not None:
+                        self.watchdog.forget(stream_id)
                     if self.g_num_sources == 0:
                         loop.quit()
         return True
+
+    def _check_sources(self, loop) -> bool:
+        """GLib timer: stop the main loop when a source stopped sending frames."""
+        stalled = self.watchdog.stalled() if self.watchdog is not None else []
+        if not stalled:
+            return True
+        for source_id, silent, ever_received in stalled:
+            if ever_received:
+                logger.error(
+                    "Source %s delivered no frame for %.0f s (limit %.0f s); restarting",
+                    source_id,
+                    silent,
+                    self.watchdog.stall_seconds,
+                )
+            else:
+                logger.error(
+                    "Source %s delivered no first frame within %.0f s; restarting",
+                    source_id,
+                    silent,
+                )
+        self.stalled_sources = stalled
+        timer = threading.Timer(self.STALL_HARD_EXIT_SECONDS, os._exit, args=(1,))
+        timer.daemon = True
+        timer.start()
+        loop.quit()
+        return False
 
     def _run_pipeline(self, tracker_probe, inference_probe) -> None:
         """Attach domain probes and run until the GStreamer loop stops."""
@@ -168,6 +204,19 @@ class DeepStreamPipeline:
             raise RuntimeError("Unable to get character inference src pad")
         inference_pad.add_probe(Gst.PadProbeType.BUFFER, inference_probe, None)
 
+        self.watchdog = StallWatchdog.from_environment(
+            source_id
+            for source_id, source_bin in enumerate(self.g_source_bin_list)
+            if source_bin is not None
+        )
+        self.stalled_sources = []
+        logger.info(
+            "Source watchdog: stall %.0f s, startup %.0f s",
+            self.watchdog.stall_seconds,
+            self.watchdog.startup_seconds,
+        )
+        GLib.timeout_add_seconds(self.WATCHDOG_INTERVAL_SECONDS, self._check_sources, loop)
+
         state_change = self.pipeline.set_state(Gst.State.PLAYING)
         if state_change == Gst.StateChangeReturn.FAILURE:
             raise RuntimeError("DeepStream pipeline failed to enter PLAYING state")
@@ -175,6 +224,9 @@ class DeepStreamPipeline:
             loop.run()
         finally:
             self.pipeline.set_state(Gst.State.NULL)
+        if self.stalled_sources:
+            ids = ", ".join(str(item[0]) for item in self.stalled_sources)
+            raise RuntimeError(f"Camera source(s) {ids} stalled")
 
     def _add_elements(self, elements: list) -> None:
         for element in elements:

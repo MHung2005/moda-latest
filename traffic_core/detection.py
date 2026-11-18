@@ -474,6 +474,8 @@ class VehicleDetection(DeepStreamPipeline):
             except StopIteration:
                 break
 
+            if self.watchdog is not None:
+                self.watchdog.mark(int(frame_meta.source_id))
             for vehicle in self._extract_frame_detections(frame_meta):
                 self._process_vehicle_observation(vehicle, gst_buffer, frame_meta)
 
