@@ -36,6 +36,79 @@ def successful_worker(_config, event, _stop_event):
         raise ValueError("unexpected event")
 
 
+def lane_worker(_config, event, stop_event):
+    """'wait' events block until superseded, then succeed only if they had a stable value."""
+    if not event.get("wait"):
+        return
+    if not stop_event.wait(10):
+        raise RuntimeError("never superseded")
+    if not event.get("stable"):
+        raise RuntimeError("cancelled before a stable value")
+
+
+class _StopLoop(Exception):
+    pass
+
+
+class _FakeMessage:
+    def __init__(self, offset, event):
+        self.topic, self.partition, self.offset = "events", 0, offset
+        self.value = json.dumps(event).encode("utf-8")
+
+
+class _FakeConsumer:
+    def __init__(self, messages, committed):
+        self._batches = [{("events", 0): messages}]
+        self._committed = committed
+        self._polls = 0
+
+    def poll(self, timeout_ms, max_records):
+        import time
+
+        self._polls += 1
+        if self._batches:
+            return self._batches.pop(0)
+        if self._committed.get(("events", 0)) == 2 or self._polls > 400:
+            raise _StopLoop
+        time.sleep(0.05)
+        return {}
+
+    def close(self):
+        pass
+
+
+def run_two_events_same_lane(first_is_stable):
+    """Offset 0 is reading lane1 when offset 1 (lane1) arrives; returns (dlq payloads, commits)."""
+    from unittest import mock
+
+    from post_analysis import runtime
+    from post_analysis.config import KafkaConfig, WorkerConfig
+
+    dlq, committed = [], {}
+    messages = [
+        _FakeMessage(0, {"lane": "lane1", "wait": True, "stable": first_is_stable}),
+        _FakeMessage(1, {"lane": "lane1"}),
+    ]
+    kafka = KafkaConfig("kafka:9092", "events", "out", "dlq", "group", 5)
+    worker = WorkerConfig(
+        max_workers=2, event_timeout_seconds=30, max_attempts=2,
+        retry_backoff_seconds=0, cancellation_grace_seconds=1,
+    )
+    with mock.patch.object(runtime, "create_consumer", lambda *a: _FakeConsumer(messages, committed)), \
+            mock.patch.object(runtime, "create_producer", lambda *a: mock.Mock()), \
+            mock.patch.object(runtime, "publish", lambda _p, _t, payload, **_k: dlq.append(payload)), \
+            mock.patch.object(runtime, "commit_offsets", lambda _c, offsets: committed.update(offsets)):
+        try:
+            runtime.run_worker_service(
+                service_name="weight_reader", kafka=kafka, worker=worker, handler=lane_worker,
+                handler_config=None, routing_key=lambda event: event.get("lane"),
+                supersede_same_key=True,
+            )
+        except _StopLoop:
+            pass
+    return dlq, committed
+
+
 class PostAnalysisConfigTests(unittest.TestCase):
     def test_loads_weight_runtime_without_credentials_in_json(self):
         config = load_weight_config(CONFIG_PATH, ENVIRONMENT)
@@ -90,6 +163,19 @@ class KafkaContractTests(unittest.TestCase):
             self.assertEqual(_receive_outcome(job), (True, ""))
         finally:
             _close_finished_job(job, grace_seconds=1)
+
+    def test_superseded_job_with_stable_value_finishes_instead_of_failing(self):
+        dlq, committed = run_two_events_same_lane(first_is_stable=True)
+        self.assertEqual(dlq, [])
+        self.assertEqual(committed.get(("events", 0)), 2)
+
+    def test_superseded_job_without_stable_value_goes_to_dlq_once(self):
+        dlq, committed = run_two_events_same_lane(first_is_stable=False)
+        self.assertEqual([payload["source_offset"] for payload in dlq], [0])
+        self.assertTrue(dlq[0]["error"].startswith("Superseded by offset 1 for lane1: "), dlq[0]["error"])
+        self.assertIn("cancelled before a stable value", dlq[0]["error"])
+        self.assertEqual(dlq[0]["attempts"], 1)
+        self.assertEqual(committed.get(("events", 0)), 2)
 
 
 class WeightLogicTests(unittest.TestCase):
@@ -190,6 +276,20 @@ class WeightLogicTests(unittest.TestCase):
 
         self.assertEqual(accumulator.peak, 32_000)
         self.assertEqual(accumulator.selected().value, 32_000)
+
+    def test_stable_reading_requires_min_count(self):
+        accumulator = WeightAccumulator(drop_threshold=3000, max_drop_count=70)
+        for _ in range(29):
+            accumulator.add(6040, FakeFrame("a"))
+        self.assertIsNone(accumulator.stable_reading(30))
+        accumulator.add(6040, FakeFrame("b"))
+        reading = accumulator.stable_reading(30)
+        self.assertEqual(reading.value, 6040)
+        self.assertEqual(accumulator.count(6040), 30)
+
+    def test_stable_reading_none_without_readings(self):
+        accumulator = WeightAccumulator(drop_threshold=3000, max_drop_count=70)
+        self.assertIsNone(accumulator.stable_reading(1))
 
     def test_accumulator_returns_none_without_readings(self):
         accumulator = WeightAccumulator(drop_threshold=3000, max_drop_count=70)

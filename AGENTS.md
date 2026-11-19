@@ -27,7 +27,7 @@ sibling `results_recorder` stores the three topics in a results SQLite for the U
 | Detector models | DeepStream `nvinfer` ×3 (YOLO ONNX → TRT FP16 engines via `trtexec`), custom bbox parser `NvDsInferParseYolo` (DeepStream-Yolo, rebuilt in image), `nvtracker` NvDCF (`libnvds_nvmultiobjecttracker.so`) |
 | Analyzer runtime | `ultralytics/ultralytics:8.3.153-jetson-jetpack6` + `kafka-python==2.0.2`, `tritonclient[http]==2.42.0`; Ultralytics `YOLO("http://triton:8000/tram_can")` |
 | Model server | `nvcr.io/nvidia/tritonserver:24.01-py3-igpu`, repo `models/triton`, single model `tram_can` (ONNX) |
-| Broker | Kafka (container `moda-kafka`, `apache/kafka:3.8.0`, **not defined in this repo**), host `<jetson-ip>:29092`; clients pin `api_version=(2,4,0)` |
+| Broker | Kafka (service `kafka` in `compose.yaml`, container `moda-kafka`, `apache/kafka:3.8.0`, single-node KRaft, volume `kafka_data`; EXTERNAL listener advertised as `MODA_KAFKA_BOOTSTRAP_SERVERS`, UI-unmanaged; `scripts/stack.sh` starts it first, stops it last), host `<jetson-ip>:29092`; clients pin `api_version=(2,4,0)` |
 | Config UI backend | Python 3.11-slim, `fastapi==0.115.6`, `uvicorn==0.32.1`, `pydantic==2.10.4`, `cryptography==44.0.0` (Fernet), `PyYAML==6.0.2`, OpenCV headless, kafka-python; docker CLI 27.3 + compose plugin copied in |
 | Config UI frontend | React 18.3.1, TypeScript 5.6.3, Vite 5.4.11, antd 5.22.5, @tanstack/react-query 5.62.8, react-router-dom 6.28.0, konva 9.3.18 / react-konva 18.2.10 (ROI drawing), dayjs |
 | Storage | Local filesystem `runtime/` (JPEGs, TRT engines), SQLite (`config_ui/data/moda_config.db`, `moda_results.db`, WAL) |
@@ -224,7 +224,7 @@ main loop (single thread):
   ├─ poll(max_records=10 when supersede_same_key)
   │   per message: tracker.register → decode_event (bad JSON → DLQ) → routing key _lane(): "lane1"/"lane2"
   │   substring of trigger_code (none → DLQ "Unsupported or missing trigger_code")
-  │   supersede: stop active job + drop pending items with same key → each written to DLQ "Superseded by offset N"
+  │   supersede: set stop_event on the active job (it publishes its value if read >= MIN_STABLE_COUNT=30 times, else DLQ "Superseded by offset N for laneX: <reason>", never retried; killed after cancellation_grace + publish_timeout) + drop pending items with same key → DLQ "Superseded by offset N"
   │   start immediately if capacity else pending
   └─ commit_completed()
 worker process (spawn) weight_reader.process_event(config, event, stop_event):
@@ -511,7 +511,7 @@ Jetson with real RTSP, Kafka and Triton.
 - `object_detection/labels.txt` has 5 labels (front, back, car, other, side) but `num-detected-classes=4`.
 - `models/triton/tram_can/config.pbtxt` is **empty** on purpose: Triton auto-generates ONNX config. Do not delete the file (preflight and `/models/options` check its existence) and do not fill it without matching I/O names.
 - `weight_reader` reloads the YOLO/Triton client and reopens RTSP **per event** (spawned process) → several seconds of startup latency inside the 60 s window; each worker also creates its own Kafka producer.
-- Routing key is the lane (`lane1`/`lane2`), so `in_gate1_laneX` and `out_gate1_laneX` supersede each other (same scale ROI). Superseded events go to the DLQ, not silently dropped.
+- Routing key is the lane (`lane1`/`lane2`), so `in_gate1_laneX` and `out_gate1_laneX` supersede each other (same scale ROI). A superseded read keeps its stable value (>= 30 identical readings) and publishes it; otherwise it goes to the DLQ, never silently dropped.
 - Weight values > 100 000 are divided by 10 (legacy, undocumented business rule; can return float). A reading of 0 wins only if nothing else was read.
 - `weight_reader` consumer uses `auto_offset_reset="latest"`: with no committed offset for the group, events produced while it was down are skipped. `results_recorder` uses `earliest`.
 - `supersede_same_key=True` keeps polling even at worker capacity, so `pending` can grow without bound if events arrive faster than they finish.
@@ -520,7 +520,7 @@ Jetson with real RTSP, Kafka and Triton.
 - `Dockerfile` downloads `pyds-1.2.0-cp310` from GitHub at build time (needs internet); the repo-root `pyds-1.1.8` wheel is JP5 and unused. `deepstream:7.1-triton-multiarch` runs `user_additional_install.sh` for missing GStreamer plugins.
 - `config_ui` mounts `/var/run/docker.sock` (= root on the host). Bind `MODA_UI_BIND` to the LAN IP. No rate limiting on login.
 - First Apply after `import` rewrites every file (explicit defaults, deduped plates, normalized env) and recreates every deployed service — do it when no truck is passing. Only services already present in `docker compose ps -a` are recreated; others only get files. Triton is never recreated by the UI.
-- Compose project names: analysis = `moda-analysis` (`COMPOSE_PROJECT_NAME`), UI = `moda-config-ui`; detector project name derives from the directory (or `COMPOSE_PROJECT_NAME` in `.env`) — renaming the checkout makes the UI see detectors as "not created". The `moda-kafka` broker and the JP5 `moda-*` containers belong to other compose projects.
+- Compose project names: analysis = `moda-analysis` (`COMPOSE_PROJECT_NAME`), UI = `moda-config-ui`; detector project name derives from the directory (or `COMPOSE_PROJECT_NAME` in `.env`) — renaming the checkout makes the UI see detectors as "not created". The `moda-kafka` broker belongs to the detector project (`compose.yaml`); `docker compose down` of that project stops Kafka too. The JP5 `moda-*` containers belong to another compose project.
 - `runtime/` has no retention policy (full 2688×1520 JPEG per vehicle, ~1.5–2 MB each). Monitor disk.
 - Uncommitted work at time of writing: watchdog (`traffic_core/watchdog.py`, `tests/test_watchdog.py`, wiring), `utc_offset_hours` change, land→lane rename (`git mv` of site/model files), deletion of `*.bak*` and JP5 `.so`, updated spec/README/AGENTS.md.
 - History-only data still says `land`: `config_ui/data/backups/*` (file backups of earlier Applies), `config_revisions.files_diff`/`log`, `analysis_failures.error`, the `runtime/thung_hang/` legacy folder, and old messages retained in the Kafka topics. Revision `snapshot_json` (used by rollback) was migrated.

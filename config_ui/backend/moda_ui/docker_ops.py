@@ -12,8 +12,9 @@ from .validation import compose_services
 
 DETECTOR = "detector"
 ANALYSIS = "analysis"
-# Triton is never recreated by the UI: none of its settings are managed here.
-UNMANAGED_SERVICES = {"triton"}
+# Triton and Kafka are never recreated by the UI: recreating the broker would drop every
+# client, and changing the Kafka address in the UI must not restart the broker itself.
+UNMANAGED_SERVICES = {"triton", "kafka"}
 
 
 class DockerError(RuntimeError):

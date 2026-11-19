@@ -47,6 +47,9 @@ SELECTION_WINDOW = 3000
 # A value must be read this many times before it can be the peak, so a single misread
 # (an extra digit, 1 read as 7) cannot drag the selection window away from the real weight.
 MIN_PEAK_COUNT = 2
+# When a newer event on the same lane cancels a read, the value read so far is published only
+# if it was read this many times (~2 s at the ~14 frames/s the reader processes).
+MIN_STABLE_COUNT = 30
 
 
 class WeightAccumulator:
@@ -123,6 +126,16 @@ class WeightAccumulator:
         if not candidates:
             return None
         return max(candidates, key=lambda reading: (self._counts[reading.value], reading.index))
+
+    def count(self, value: int | float) -> int:
+        return self._counts[value]
+
+    def stable_reading(self, min_count: int) -> Reading | None:
+        """selected() if its value was read at least min_count times, else None."""
+        reading = self.selected()
+        if reading is None or self._counts[reading.value] < min_count:
+            return None
+        return reading
 
 
 def calculate_iou(box1: tuple[int, int, int, int], box2: tuple[int, int, int, int]) -> float:
@@ -300,6 +313,8 @@ def process_event(config: WeightConfig, event: dict[str, object], stop_event) ->
     except Exception as error:
         raise WeightStepError("2/7 model", f"Triton model {config.model_url} not ready: {error}") from error
     step(2, "model", "model ready: %s", config.model_url)
+    if stop_event.is_set():
+        raise WeightStepError("2/7 model", "Weight read was cancelled before the camera was opened")
 
     # 3. Weighbridge camera.
     try:
@@ -356,12 +371,26 @@ def process_event(config: WeightConfig, event: dict[str, object], stop_event) ->
                 break
 
         if stop_event.is_set():
-            raise WeightStepError("5/7 read", f"Weight read was cancelled; {stats.summary()}")
-        step(
-            5, "read", "finished early_stop=%s %s",
-            accumulator.early_stopped, stats.summary(),
-        )
-        selected = accumulator.selected()
+            # A newer event took this lane over. Keep the value read so far if it is stable
+            # (read at least MIN_STABLE_COUNT times); a value still rising while the vehicle
+            # drives on would be wrong, so anything less is a failure.
+            selected = accumulator.stable_reading(MIN_STABLE_COUNT)
+            if selected is None:
+                raise WeightStepError(
+                    "5/7 read",
+                    f"Weight read was cancelled before a stable value"
+                    f" (needs {MIN_STABLE_COUNT} identical readings); {stats.summary()}",
+                )
+            step(
+                5, "read", "cancelled by a newer event; using stable value %s (x%d) %s",
+                selected.value, accumulator.count(selected.value), stats.summary(),
+            )
+        else:
+            step(
+                5, "read", "finished early_stop=%s %s",
+                accumulator.early_stopped, stats.summary(),
+            )
+            selected = accumulator.selected()
         if selected is None:
             debug = _save_debug_frame(cv2, config, trigger_code, "no_digits", last_frame, crop)
             hint = (

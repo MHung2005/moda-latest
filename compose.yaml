@@ -7,6 +7,9 @@ x-traffic: &traffic
   init: true
   runtime: nvidia
   ipc: host
+  depends_on:
+    kafka:
+      condition: service_healthy
   logging:
     driver: json-file
     options:
@@ -17,6 +20,49 @@ x-runtime-environment: &runtime-environment
   MODA_KAFKA_BOOTSTRAP_SERVERS: ${MODA_KAFKA_BOOTSTRAP_SERVERS:?set MODA_KAFKA_BOOTSTRAP_SERVERS}
 
 services:
+  # Single-node KRaft broker shared by detectors, weight_reader and results_recorder.
+  # Every client (other compose projects included) connects through the host port, so the
+  # EXTERNAL listener is advertised as MODA_KAFKA_BOOTSTRAP_SERVERS (one host:port, e.g.
+  # 10.0.10.62:29092). Topics are auto-created on first use. The config UI never recreates it.
+  kafka:
+    image: ${MODA_KAFKA_IMAGE:-apache/kafka:3.8.0}
+    container_name: moda-kafka
+    restart: unless-stopped
+    ports:
+      - "29092:29092"
+    environment:
+      CLUSTER_ID: ${MODA_KAFKA_CLUSTER_ID:-4L6g3nShT-eMCtK--X86sw}
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://${MODA_KAFKA_BOOTSTRAP_SERVERS:?set MODA_KAFKA_BOOTSTRAP_SERVERS}
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_NUM_PARTITIONS: 1
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      KAFKA_LOG_RETENTION_HOURS: ${MODA_KAFKA_RETENTION_HOURS:-168}
+      KAFKA_HEAP_OPTS: ${MODA_KAFKA_HEAP_OPTS:--Xms512m -Xmx512m}
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 15s
+      retries: 12
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   in_gate1_lane1:
     <<: *traffic
     command: ["--site", "/app/config/sites/in_gate1_lane1.json"]
@@ -64,3 +110,6 @@ services:
       - ./config:/app/config:ro
       - ./runtime/engines:/cache/engines
       - ./runtime/vehicle/out_gate1_lane2:/data/vehicle
+
+volumes:
+  kafka_data:

@@ -57,6 +57,10 @@ class ActiveJob:
     stop_event: object
     started_at: float
     routing_key: str | None
+    # Set when a newer event for the same routing key arrived. The job has been asked to stop
+    # (stop_event) and may still finish successfully with what it already read.
+    superseded_by: int | None = None
+    superseded_at: float = 0.0
 
 
 class OffsetTracker:
@@ -277,6 +281,13 @@ def run_worker_service(
     def key_for(event: dict[str, object]) -> str | None:
         return None if routing_key is None else routing_key(event)
 
+    def superseded_reason(job: ActiveJob, detail: str = "") -> str:
+        reason = f"Superseded by offset {job.superseded_by} for {job.routing_key}"
+        return f"{reason}: {detail}" if detail else reason
+
+    # A superseded job gets this long to publish what it already read before it is killed.
+    supersede_finish_seconds = worker.cancellation_grace_seconds + kafka.publish_timeout_seconds
+
     try:
         while True:
             now = time.monotonic()
@@ -285,7 +296,15 @@ def run_worker_service(
                 outcome: tuple[bool, str] | None = None
                 if job.result.poll():
                     outcome = _receive_outcome(job)
-                elif now - job.started_at > worker.event_timeout_seconds:
+                elif job.superseded_by is not None and now - job.superseded_at > supersede_finish_seconds:
+                    _stop_job(job, worker.cancellation_grace_seconds)
+                    del active[identifier]
+                    complete_failure(
+                        job.item,
+                        superseded_reason(job, f"did not stop within {supersede_finish_seconds:.0f}s"),
+                    )
+                    continue
+                elif job.superseded_by is None and now - job.started_at > worker.event_timeout_seconds:
                     _stop_job(job, worker.cancellation_grace_seconds)
                     del active[identifier]
                     retry_or_fail(
@@ -311,9 +330,13 @@ def run_worker_service(
                 if succeeded:
                     tracker.complete(job.item.source)
                     logger.info(
-                        "%s done %s in %.1fs",
+                        "%s done %s in %.1fs%s",
                         service_name, describe(job.item), time.monotonic() - job.started_at,
+                        "" if job.superseded_by is None else f" (superseded by offset {job.superseded_by})",
                     )
+                elif job.superseded_by is not None:
+                    # Never retry a superseded event: the newer one owns the lane now.
+                    complete_failure(job.item, superseded_reason(job, short_reason(error)))
                 else:
                     retry_or_fail(job.item, error)
 
@@ -326,7 +349,7 @@ def run_worker_service(
                     continue
                 item_key = key_for(item.event)
                 if item_key is not None and any(
-                    job.routing_key == item_key for job in active.values()
+                    job.routing_key == item_key and job.superseded_by is None for job in active.values()
                 ):
                     pending.append(item)
                     continue
@@ -361,19 +384,19 @@ def run_worker_service(
                         continue
 
                     if supersede_same_key and item_key is not None:
-                        for identifier, existing in list(active.items()):
-                            if existing.routing_key != item_key:
+                        for existing in active.values():
+                            if existing.routing_key != item_key or existing.superseded_by is not None:
                                 continue
                             logger.warning(
-                                "%s %s superseded by offset %s (same %s); cancelling it",
+                                "%s %s superseded by offset %s (same %s); asking it to stop"
+                                " (it publishes its stable reading if it has one)",
                                 service_name, describe(existing.item), source.offset, item_key,
                             )
-                            _stop_job(existing, worker.cancellation_grace_seconds)
-                            del active[identifier]
-                            complete_failure(
-                                existing.item,
-                                f"Superseded by offset {source.offset} for {item_key}",
-                            )
+                            # Not killed: the worker stops reading and finalizes on its own; the
+                            # outcome is handled by the active-job loop above.
+                            existing.stop_event.set()
+                            existing.superseded_by = source.offset
+                            existing.superseded_at = time.monotonic()
                         retained: deque[WorkItem] = deque()
                         while pending:
                             queued = pending.popleft()
