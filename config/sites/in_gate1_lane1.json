@@ -3,10 +3,10 @@
   "camera_url_envs": ["MODA_IN_GATE1_LANE1_CAMERA_URL"],
   "trigger_codes": {"0": "in_gate1_lane1"},
   "capture_zones": {
-    "0": [[780, 956], [1485, 743], [1819, 996], [982, 1473]]
+    "0": [[835, 1001], [1540, 763], [1830, 998], [1000, 1434]]
   },
   "inference_zones": {
-    "0": [[690, 553], [1115, 448], [1550, 775], [1860, 1000], [960, 1508], [800, 1108]]
+    "0": [[666, 569], [1217, 496], [1896, 1024], [971, 1501]]
   },
   "models": {
     "tracker": "/home/jetson/models/tracker/config_tracker.txt",
@@ -16,8 +16,8 @@
   },
   "reference_plate_path": "../reference_plates/standard.txt",
   "utc_offset_hours": 7,
-  "vehicle_confidence": 0.7,
-  "plate_character_confidence": 0.7,
+  "vehicle_confidence": 0.3,
+  "plate_character_confidence": 0.3,
   "plate_collection_seconds": 4.0,
   "video_fps": 10.0,
   "output_topic": "VehicleDetection_Gate1",

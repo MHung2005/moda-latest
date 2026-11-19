@@ -20,10 +20,10 @@
     "camera_read_timeout_ms": 5000,
     "model_startup_attempts": 10,
     "model_startup_delay_seconds": 2,
-    "max_seconds": 60,
+    "max_seconds": 40,
     "confidence": 0.5,
     "drop_threshold": 3000,
-    "max_drop_count": 70,
+    "max_drop_count": 50,
     "crops": {
       "in_gate1_lane1": [211, 837, 387, 619],
       "out_gate1_lane1": [224, 828, 380, 602],

@@ -6,7 +6,7 @@
     "0": [[534, 1134], [1698, 1365], [1947, 896], [1202, 734]]
   },
   "inference_zones": {
-    "0": [[490, 1160], [1690, 1417], [2131, 552], [2190, 427], [1746, 317]]
+    "0": [[1632, 440], [2146, 568], [1665, 1467], [394, 1218]]
   },
   "models": {
     "tracker": "/home/jetson/models/tracker/config_tracker.txt",
@@ -16,9 +16,9 @@
   },
   "reference_plate_path": "../reference_plates/standard.txt",
   "utc_offset_hours": 7,
-  "vehicle_confidence": 0.7,
-  "plate_character_confidence": 0.7,
-  "plate_collection_seconds": 5.0,
+  "vehicle_confidence": 0.3,
+  "plate_character_confidence": 0.3,
+  "plate_collection_seconds": 4.0,
   "video_fps": 30.0,
   "output_topic": "VehicleDetection_Gate1",
   "output_partition": 0,
