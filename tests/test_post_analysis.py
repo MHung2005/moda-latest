@@ -296,6 +296,99 @@ class WeightLogicTests(unittest.TestCase):
         self.assertIsNone(accumulator.selected())
 
 
+class _ScriptedCapture:
+    """Fake cv2 capture: returns the given read results in order, then fails."""
+
+    def __init__(self, results):
+        self._results = list(results)
+        self.released = False
+
+    def read(self):
+        return self._results.pop(0) if self._results else (False, None)
+
+    def release(self):
+        self.released = True
+
+
+class CameraReconnectTests(unittest.TestCase):
+    def _reconnecting(self, first, reopened, max_reconnects=3, should_continue=lambda: True):
+        from post_analysis.capture import ReconnectingCapture
+
+        opened = []
+
+        def open_fn():
+            item = reopened.pop(0)
+            if isinstance(item, Exception):
+                raise item
+            opened.append(item)
+            return item
+
+        return ReconnectingCapture(open_fn, first, max_reconnects, should_continue), opened
+
+    def test_read_failure_reopens_stream_and_keeps_reading(self):
+        # The production stall: one frame, then the stream goes silent.
+        first = _ScriptedCapture([(True, "f1"), (False, None)])
+        second = _ScriptedCapture([(True, "f2"), (True, "f3")])
+        capture, opened = self._reconnecting(first, [second])
+
+        self.assertEqual([capture.read() for _ in range(3)], [(True, "f1"), (True, "f2"), (True, "f3")])
+        self.assertEqual(capture.reconnects, 1)
+        self.assertTrue(first.released)
+        self.assertEqual(opened, [second])
+
+    def test_failed_reopen_counts_as_reconnect_and_retries(self):
+        first = _ScriptedCapture([(False, None)])
+        good = _ScriptedCapture([(True, "f1")])
+        capture, _ = self._reconnecting(first, [RuntimeError("Could not open RTSP camera"), good])
+
+        self.assertEqual(capture.read(), (True, "f1"))
+        self.assertEqual(capture.reconnects, 2)
+
+    def test_gives_up_after_max_reconnects(self):
+        dead = [_ScriptedCapture([]) for _ in range(3)]
+        capture, opened = self._reconnecting(_ScriptedCapture([]), list(dead), max_reconnects=2)
+
+        self.assertEqual(capture.read(), (False, None))
+        self.assertEqual(capture.reconnects, 2)
+        self.assertEqual(len(opened), 2)
+        self.assertTrue(all(c.released for c in opened))
+
+    def test_does_not_reconnect_when_cancelled_or_out_of_time(self):
+        capture, opened = self._reconnecting(
+            _ScriptedCapture([]), [_ScriptedCapture([(True, "f")])], should_continue=lambda: False
+        )
+
+        self.assertEqual(capture.read(), (False, None))
+        self.assertEqual(capture.reconnects, 0)
+        self.assertEqual(opened, [])
+
+    def test_release_closes_current_stream_once(self):
+        first = _ScriptedCapture([(True, "f1")])
+        capture, _ = self._reconnecting(first, [])
+        capture.release()
+        capture.release()
+        self.assertTrue(first.released)
+
+    def test_open_with_retry(self):
+        from post_analysis.capture import open_with_retry
+
+        calls = []
+
+        def flaky():
+            calls.append(1)
+            if len(calls) == 1:
+                raise RuntimeError("Could not open RTSP camera")
+            return "capture"
+
+        self.assertEqual(open_with_retry(flaky, 2, lambda: True), "capture")
+        calls.clear()
+        with self.assertRaises(RuntimeError):
+            open_with_retry(lambda: (_ for _ in ()).throw(RuntimeError("down")), 2, lambda: True)
+        with self.assertRaises(RuntimeError):  # cancelled: no second attempt
+            open_with_retry(flaky, 2, lambda: False)
+        self.assertEqual(len(calls), 1)
+
+
 class DiagnosticsTests(unittest.TestCase):
     def test_crop_fits_detects_resolution_change(self):
         from post_analysis.config import Crop

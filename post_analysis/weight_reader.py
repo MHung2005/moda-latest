@@ -10,7 +10,7 @@ from pathlib import Path
 import time
 from typing import Iterable
 
-from .capture import open_camera
+from .capture import ReconnectingCapture, open_camera, open_with_retry
 from .config import WeightConfig
 from .contracts import build_analysis_result
 from .kafka import create_producer, publish
@@ -50,6 +50,12 @@ MIN_PEAK_COUNT = 2
 # When a newer event on the same lane cancels a read, the value read so far is published only
 # if it was read this many times (~2 s at the ~14 frames/s the reader processes).
 MIN_STABLE_COUNT = 30
+# The weighbridge camera is reached over a WAN link that sometimes stalls right after the
+# RTSP session opens. Each attempt costs at most camera_open_timeout_ms + camera_read_timeout_ms
+# (5 s + 5 s); with these limits a worst-case event stays below event_timeout_seconds (75 s):
+# ~5 s spawn + 2 opens + max_seconds (40 s) + one reconnect still in flight when time runs out.
+CAMERA_OPEN_ATTEMPTS = 2
+MAX_CAMERA_RECONNECTS = 3
 
 
 class WeightAccumulator:
@@ -316,16 +322,25 @@ def process_event(config: WeightConfig, event: dict[str, object], stop_event) ->
     if stop_event.is_set():
         raise WeightStepError("2/7 model", "Weight read was cancelled before the camera was opened")
 
-    # 3. Weighbridge camera.
-    try:
-        capture = open_camera(
+    # 3. Weighbridge camera (over a WAN link that sometimes stalls: retry the open, and
+    # reopen the stream when a read fails, see ReconnectingCapture).
+    def open_weight_camera():
+        return open_camera(
             cv2,
             config.camera_url,
             config.io.camera_open_timeout_ms,
             config.io.camera_read_timeout_ms,
         )
+
+    try:
+        first_capture = open_with_retry(
+            open_weight_camera, CAMERA_OPEN_ATTEMPTS, lambda: not stop_event.is_set()
+        )
     except Exception as error:
-        raise WeightStepError("3/7 camera", f"Could not open weighbridge camera: {error}") from error
+        raise WeightStepError(
+            "3/7 camera",
+            f"Could not open weighbridge camera after {CAMERA_OPEN_ATTEMPTS} attempt(s): {error}",
+        ) from error
     step(3, "camera", "camera opened")
 
     accumulator = WeightAccumulator(config.drop_threshold, config.max_drop_count)
@@ -334,14 +349,26 @@ def process_event(config: WeightConfig, event: dict[str, object], stop_event) ->
     next_progress = started_at + 10
     last_frame = None
 
+    def within_budget() -> bool:
+        return not stop_event.is_set() and time.monotonic() - started_at <= config.max_seconds
+
+    capture = ReconnectingCapture(
+        open_weight_camera, first_capture, MAX_CAMERA_RECONNECTS, within_budget
+    )
+
     try:
         # 4 + 5. Read frames until the value is stable, peaks, or max_seconds elapse.
-        while not stop_event.is_set() and time.monotonic() - started_at <= config.max_seconds:
+        while within_budget():
             ok, frame = capture.read()
             if not ok:
+                if not within_budget():
+                    # Cancelled or out of time while reconnecting: decided below exactly as when
+                    # the loop condition ends the read (stable value / readings so far).
+                    break
                 raise WeightStepError(
                     "5/7 read",
                     f"Could not read weighbridge camera after {stats.frames} frame(s)"
+                    f" and {capture.reconnects} reconnect(s)"
                     f" ({time.monotonic() - started_at:.1f}s)",
                 )
             height, width = frame.shape[:2]
@@ -387,8 +414,8 @@ def process_event(config: WeightConfig, event: dict[str, object], stop_event) ->
             )
         else:
             step(
-                5, "read", "finished early_stop=%s %s",
-                accumulator.early_stopped, stats.summary(),
+                5, "read", "finished early_stop=%s reconnects=%d %s",
+                accumulator.early_stopped, capture.reconnects, stats.summary(),
             )
             selected = accumulator.selected()
         if selected is None:
