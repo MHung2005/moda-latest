@@ -22,7 +22,7 @@ from . import repository as repo
 from .envfile import env_values_for_runtime
 from .generator import POST_ANALYSIS_FILE, PLATE_DIR, SITE_DIR, GenerationError, build_files, read_current_files
 from .settings import Settings
-from .validation import compose_services, service_environment_names
+from .validation import compose_services, service_environment_names, site_service_names
 
 
 SECRET_ENV_HINTS = ("URL",)
@@ -124,11 +124,16 @@ def affected_services(
     ):
         plate_users.setdefault(row["file_name"], set()).add(row["code"])
 
+    # A site runs in the service that lists it with --site (one container per gate).
+    site_services = site_service_names(compose_services(settings, settings.detector_compose_file))
     for path in changed:
         if path.startswith(SITE_DIR + "/"):
-            result[docker_ops.DETECTOR].add(Path(path).stem)
+            code = Path(path).stem
+            result[docker_ops.DETECTOR].add(site_services.get(code, code))
         elif path.startswith(PLATE_DIR + "/"):
-            result[docker_ops.DETECTOR] |= plate_users.get(Path(path).name, set())
+            result[docker_ops.DETECTOR] |= {
+                site_services.get(code, code) for code in plate_users.get(Path(path).name, set())
+            }
 
     if POST_ANALYSIS_FILE in changed:
         old = json.loads(current.get(POST_ANALYSIS_FILE) or "{}")

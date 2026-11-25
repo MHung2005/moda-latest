@@ -36,7 +36,10 @@ class DeepStreamPipeline:
     watchdog: StallWatchdog | None = None
     stalled_sources: list[tuple[int, float, bool]] = []
 
-    def __init__(self) -> None:
+    def __init__(self, label: str = "") -> None:
+        # Shown in log lines: one process may run several pipelines (one per site), and
+        # every pipeline numbers its own sources from 0.
+        self.label = label or "pipeline"
         self.tracker_config = ""
         self.pgie_config = ""
         self.sgie_config = ""
@@ -139,11 +142,11 @@ class DeepStreamPipeline:
             loop.quit()
         elif message_type == Gst.MessageType.WARNING:
             error, debug = message.parse_warning()
-            warning = f"Warning: {error}: {debug}"
+            warning = f"[{self.label}] Warning: {error}: {debug}"
             logger.warning(warning)
         elif message_type == Gst.MessageType.ERROR:
             error, debug = message.parse_error()
-            failure = f"Error: {error}: {debug}"
+            failure = f"[{self.label}] Error: {error}: {debug}"
             logger.error(failure)
             self._stop_all_sources()
             loop.quit()
@@ -152,7 +155,9 @@ class DeepStreamPipeline:
             if structure is not None and structure.has_name("stream-eos"):
                 parsed, stream_id = structure.get_uint("stream-id")
                 if parsed:
-                    reason = f"Stream EOS for stream {stream_id}; removing source."
+                    reason = (
+                        f"[{self.label}] Stream EOS for stream {stream_id}; removing source."
+                    )
                     logger.info(reason)
                     self._remove_source(stream_id)
                     if self.watchdog is not None:
@@ -169,14 +174,16 @@ class DeepStreamPipeline:
         for source_id, silent, ever_received in stalled:
             if ever_received:
                 logger.error(
-                    "Source %s delivered no frame for %.0f s (limit %.0f s); restarting",
+                    "[%s] Source %s delivered no frame for %.0f s (limit %.0f s); restarting",
+                    self.label,
                     source_id,
                     silent,
                     self.watchdog.stall_seconds,
                 )
             else:
                 logger.error(
-                    "Source %s delivered no first frame within %.0f s; restarting",
+                    "[%s] Source %s delivered no first frame within %.0f s; restarting",
+                    self.label,
                     source_id,
                     silent,
                 )
@@ -189,7 +196,38 @@ class DeepStreamPipeline:
 
     def _run_pipeline(self, tracker_probe, inference_probe) -> None:
         """Attach domain probes and run until the GStreamer loop stops."""
+        self.run_pipelines([(self, tracker_probe, inference_probe)])
+
+    @staticmethod
+    def run_pipelines(entries) -> None:
+        """Run several independent pipelines in this process on one GLib main loop.
+
+        `entries` is [(pipeline, tracker_probe, inference_probe), ...]. Each pipeline keeps
+        its own sources, models, tracker and watchdog; only the process (CUDA context,
+        TensorRT/DeepStream libraries, Python runtime) is shared. Any pipeline that ends
+        (EOS, ERROR, stalled source) quits the shared loop, so the whole process exits and
+        Docker restarts every pipeline of it together.
+        """
         loop = GObject.MainLoop()
+        started = []
+        try:
+            for pipeline, tracker_probe, inference_probe in entries:
+                pipeline._start_pipeline(loop, tracker_probe, inference_probe)
+                started.append(pipeline)
+            loop.run()
+        finally:
+            for pipeline in started:
+                pipeline.pipeline.set_state(Gst.State.NULL)
+        stalled = [
+            f"{pipeline.label}: {', '.join(str(item[0]) for item in pipeline.stalled_sources)}"
+            for pipeline, _, _ in entries
+            if pipeline.stalled_sources
+        ]
+        if stalled:
+            raise RuntimeError(f"Camera source(s) stalled ({'; '.join(stalled)})")
+
+    def _start_pipeline(self, loop, tracker_probe, inference_probe) -> None:
+        """Attach probes, bus watch and watchdog to `loop`, then set PLAYING."""
         bus = self.pipeline.get_bus()
         bus.add_signal_watch()
         bus.connect("message", self._on_bus_message, loop)
@@ -211,7 +249,8 @@ class DeepStreamPipeline:
         )
         self.stalled_sources = []
         logger.info(
-            "Source watchdog: stall %.0f s, startup %.0f s",
+            "[%s] Source watchdog: stall %.0f s, startup %.0f s",
+            self.label,
             self.watchdog.stall_seconds,
             self.watchdog.startup_seconds,
         )
@@ -219,14 +258,10 @@ class DeepStreamPipeline:
 
         state_change = self.pipeline.set_state(Gst.State.PLAYING)
         if state_change == Gst.StateChangeReturn.FAILURE:
-            raise RuntimeError("DeepStream pipeline failed to enter PLAYING state")
-        try:
-            loop.run()
-        finally:
             self.pipeline.set_state(Gst.State.NULL)
-        if self.stalled_sources:
-            ids = ", ".join(str(item[0]) for item in self.stalled_sources)
-            raise RuntimeError(f"Camera source(s) {ids} stalled")
+            raise RuntimeError(
+                f"[{self.label}] DeepStream pipeline failed to enter PLAYING state"
+            )
 
     def _add_elements(self, elements: list) -> None:
         for element in elements:

@@ -3,7 +3,7 @@
   "camera_url_envs": ["MODA_IN_GATE1_LANE2_CAMERA_URL"],
   "trigger_codes": {"0": "in_gate1_lane2"},
   "capture_zones": {
-    "0": [[534, 1134], [1698, 1365], [1947, 896], [1202, 734]]
+    "0": [[886, 937], [1764, 1095], [1650, 1388], [490, 1201]]
   },
   "inference_zones": {
     "0": [[1632, 440], [2146, 568], [1665, 1467], [394, 1218]]
@@ -18,7 +18,7 @@
   "utc_offset_hours": 7,
   "vehicle_confidence": 0.3,
   "plate_character_confidence": 0.3,
-  "plate_collection_seconds": 4.0,
+  "plate_collection_seconds": 2.0,
   "video_fps": 30.0,
   "output_topic": "VehicleDetection_Gate1",
   "output_partition": 0,

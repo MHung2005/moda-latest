@@ -73,7 +73,7 @@ class VehicleDetection(DeepStreamPipeline):
 
     def __init__(self, site_config: SiteConfig):
         logger.info("Initializing vehicle detection for %s", site_config.name)
-        super().__init__()
+        super().__init__(label=site_config.name)
         self.tracks = TrackingRegistry()
         self.producer = create_producer(site_config.kafka_bootstrap_servers)
         self.tracker_config = site_config.tracker_config_path
@@ -91,7 +91,7 @@ class VehicleDetection(DeepStreamPipeline):
             if line.strip()
         ]
         self.fps_streams = {
-            f"stream{source_id}": FpsCounter(source_id)
+            f"stream{source_id}": FpsCounter(source_id, label=site_config.name)
             for source_id in range(len(site_config.camera_urls))
         }
         self.vehicle_confidence = site_config.vehicle_confidence
@@ -492,24 +492,40 @@ class VehicleDetection(DeepStreamPipeline):
         return Gst.PadProbeReturn.OK
 
     def run(self):
+        run_detections([self])
+
+    def _shutdown(self):
+        """Publish captured tracks and close Kafka; never raises."""
         try:
-            self._run_pipeline(
-                tracker_probe=self._filter_inference_objects,
-                inference_probe=self._process_inference_results,
-            )
-        except Exception:
-            logger.error("DeepStream main loop failed")
-            raise
-        finally:
-            try:
-                self._flush_pending_events()
-            except Exception as error:
-                logger.error("Failed to flush pending tracks: %s", error)
-            try:
-                self.producer.flush(timeout=10)
-            except Exception as error:
-                logger.error("Failed to flush Kafka producer: %s", error)
-            try:
-                self.producer.close(timeout=10)
-            except Exception as error:
-                logger.error("Failed to close Kafka producer: %s", error)
+            self._flush_pending_events()
+        except Exception as error:
+            logger.error("[%s] Failed to flush pending tracks: %s", self.label, error)
+        try:
+            self.producer.flush(timeout=10)
+        except Exception as error:
+            logger.error("[%s] Failed to flush Kafka producer: %s", self.label, error)
+        try:
+            self.producer.close(timeout=10)
+        except Exception as error:
+            logger.error("[%s] Failed to close Kafka producer: %s", self.label, error)
+
+
+def run_detections(detections: list[VehicleDetection]) -> None:
+    """Run one or more sites in this process until any of their pipelines stops."""
+    try:
+        DeepStreamPipeline.run_pipelines(
+            [
+                (
+                    detection,
+                    detection._filter_inference_objects,
+                    detection._process_inference_results,
+                )
+                for detection in detections
+            ]
+        )
+    except Exception:
+        logger.error("DeepStream main loop failed")
+        raise
+    finally:
+        for detection in detections:
+            detection._shutdown()

@@ -184,10 +184,11 @@ class SiteConfigTests(unittest.TestCase):
 
         # Four vehicle engines (one per lane) plus the shared plate and character engines.
         self.assertEqual(len(cache_targets), 6)
+        # One detector container per gate (in_gate1, out_gate1), each running two lanes.
         compose = (repository / "compose.yaml").read_text(encoding="utf-8")
         self.assertEqual(
             compose.count("./runtime/engines:/cache/engines"),
-            4,
+            2,
         )
 
 

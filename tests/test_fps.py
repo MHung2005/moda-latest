@@ -13,6 +13,14 @@ class FpsCounterTests(unittest.TestCase):
         self.assertEqual(counter.get_fps(), 0.0)
         self.assertEqual(counter.get_fps(), 3.0)
 
+    @patch("traffic_core.fps.time.monotonic", side_effect=[10.0, 11.0])
+    def test_label_names_the_site_in_the_log(self, _monotonic):
+        counter = FpsCounter(stream_id=0, label="in-gate1-lane2")
+        with self.assertLogs("traffic_core.fps", level="INFO") as logs:
+            counter.get_fps()
+            counter.get_fps()
+        self.assertIn("[in-gate1-lane2] FPS stream 0", logs.output[0])
+
 
 if __name__ == "__main__":
     unittest.main()

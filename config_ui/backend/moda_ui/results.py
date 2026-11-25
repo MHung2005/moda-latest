@@ -120,12 +120,18 @@ def _safe_relative(path: str) -> str | None:
 
 
 def vehicle_image_relpath(container_path: str | None, trigger_code: str) -> str | None:
-    """/data/vehicle/20261111/x.jpg of service <lane> -> vehicle/<lane>/20261111/x.jpg"""
+    """/data/vehicle/20261111/x.jpg of service <lane> -> vehicle/<lane>/20261111/x.jpg
+
+    A gate container runs several lanes and each writes to /data/vehicle/<lane>/...
+    (compose mounts runtime/vehicle/<lane> there): same result."""
     if not container_path:
         return None
     if container_path.startswith(DETECTOR_IMAGE_ROOT):
-        rest = _safe_relative(container_path[len(DETECTOR_IMAGE_ROOT):])
+        rest = container_path[len(DETECTOR_IMAGE_ROOT):]
         lane = _safe_relative(trigger_code)
+        if lane and rest.startswith(lane + "/"):
+            rest = rest[len(lane) + 1:]
+        rest = _safe_relative(rest)
         return f"vehicle/{lane}/{rest}" if rest and lane else None
     return _safe_relative(container_path)
 

@@ -18,7 +18,7 @@
   "utc_offset_hours": 7,
   "vehicle_confidence": 0.3,
   "plate_character_confidence": 0.3,
-  "plate_collection_seconds": 4.0,
+  "plate_collection_seconds": 2.0,
   "video_fps": 30.0,
   "output_topic": "VehicleDetection_Gate1",
   "output_partition": 0,

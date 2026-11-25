@@ -38,6 +38,30 @@ def compose_services(settings: Settings, compose_file: str) -> dict[str, dict]:
     return data.get("services", {}) or {}
 
 
+def _service_command(service: dict) -> list[str]:
+    command = service.get("command") or []
+    if isinstance(command, str):
+        return command.split()
+    return [str(item) for item in command]
+
+
+def site_service_names(services: Mapping[str, dict]) -> dict[str, str]:
+    """{site code: compose service that runs it}.
+
+    A service runs every site passed as `--site .../<code>.json` in its command (one
+    gate container runs both lanes). A service named after a site that no command lists
+    runs that site (the former one-container-per-lane layout)."""
+    result: dict[str, str] = {}
+    for name, service in services.items():
+        command = _service_command(service)
+        for flag, value in zip(command, command[1:]):
+            if flag == "--site":
+                result.setdefault(Path(value).stem, name)
+    for name in services:
+        result.setdefault(name, name)
+    return result
+
+
 def service_environment_names(service: dict) -> set[str]:
     """Variable names a compose service receives or interpolates."""
     environment = service.get("environment") or {}
@@ -62,6 +86,7 @@ def validate_files(settings: Settings, files: Mapping[str, str]) -> list[str]:
     detector_env = env_values_for_runtime(files.get(settings.detector_env_file, ""))
     analysis_env = env_values_for_runtime(files.get(settings.analysis_env_file, ""))
     detector_services = compose_services(settings, settings.detector_compose_file)
+    site_services = site_service_names(detector_services)
 
     with tempfile.TemporaryDirectory(prefix="moda-validate-") as directory:
         root = Path(directory)
@@ -89,16 +114,20 @@ def validate_files(settings: Settings, files: Mapping[str, str]) -> list[str]:
                             )
                             break
             if detector_services:
-                service = detector_services.get(code)
+                service_name = site_services.get(code)
+                service = detector_services.get(service_name) if service_name else None
                 if service is None:
-                    errors.append(f"{relative}: không có service '{code}' trong {settings.detector_compose_file}")
+                    errors.append(
+                        f"{relative}: không có service nào trong {settings.detector_compose_file}"
+                        f" chạy site '{code}' (tên service '{code}' hoặc --site .../{code}.json)"
+                    )
                 else:
                     env_names = json.loads(files[relative])["camera_url_envs"]
                     passed = service_environment_names(service)
                     missing = [name for name in env_names if name not in passed]
                     if missing:
                         errors.append(
-                            f"{relative}: service '{code}' trong {settings.detector_compose_file}"
+                            f"{relative}: service '{service_name}' trong {settings.detector_compose_file}"
                             f" chưa truyền biến {', '.join(missing)} vào container"
                         )
 

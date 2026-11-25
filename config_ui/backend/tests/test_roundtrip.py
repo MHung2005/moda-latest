@@ -26,7 +26,40 @@ from moda_ui.generator import build_files  # noqa: E402
 from moda_ui.importer import import_from_files  # noqa: E402
 from moda_ui.security import decrypt_url, generate_secret_key, mask_url  # noqa: E402
 from moda_ui.settings import load_settings, override_settings  # noqa: E402
-from moda_ui.validation import validate_files  # noqa: E402
+from moda_ui.results import vehicle_image_relpath  # noqa: E402
+from moda_ui.validation import compose_services, site_service_names, validate_files  # noqa: E402
+
+
+class SiteServiceNamesTests(unittest.TestCase):
+    def test_command_sites_win_and_named_services_fall_back(self):
+        services = {
+            "in_gate1": {"command": ["--site", "/app/config/sites/a.json", "--site", "/app/config/sites/b.json"]},
+            "c": {"command": "--site /app/config/sites/c.json"},
+            "d": {},
+            "kafka": {"image": "apache/kafka"},
+        }
+        mapping = site_service_names(services)
+        self.assertEqual("in_gate1", mapping["a"])
+        self.assertEqual("in_gate1", mapping["b"])
+        self.assertEqual("c", mapping["c"])
+        self.assertEqual("d", mapping["d"])
+
+
+class VehicleImagePathTests(unittest.TestCase):
+    def test_single_lane_container_path(self):
+        self.assertEqual(
+            "vehicle/in_gate1_lane1/20261119/x.jpg",
+            vehicle_image_relpath("/data/vehicle/20261119/x.jpg", "in_gate1_lane1"),
+        )
+
+    def test_gate_container_path_has_lane_folder(self):
+        self.assertEqual(
+            "vehicle/in_gate1_lane2/20261119/x.jpg",
+            vehicle_image_relpath("/data/vehicle/in_gate1_lane2/20261119/x.jpg", "in_gate1_lane2"),
+        )
+
+    def test_unsafe_path_is_rejected(self):
+        self.assertIsNone(vehicle_image_relpath("/data/vehicle/in_gate1_lane2/../x.jpg", "in_gate1_lane2"))
 
 
 class ProjectCase(unittest.TestCase):
@@ -97,9 +130,45 @@ class RoundTripTests(ProjectCase):
         current = {path: baseline[path] for path in baseline}
         current["config/sites/in_gate1_lane1.json"] = "{}"
         services = applier.affected_services(self.conn, self.settings, baseline, current)
-        self.assertEqual({"in_gate1_lane1"}, services["detector"])
+        # Both lanes of gate 1 (in) run in the compose service "in_gate1".
+        self.assertEqual({"in_gate1"}, services["detector"])
         self.assertEqual(set(), services["analysis"])
         self.assertEqual([], result["errors"])
+
+    def test_lane_camera_url_change_restarts_its_gate(self):
+        baseline = build_files(self.conn, self.settings)
+        camera = next(
+            c for c in repo.list_cameras(self.conn) if c["env_name"] == "MODA_OUT_GATE1_LANE2_CAMERA_URL"
+        )
+        repo.update_camera(
+            self.conn,
+            camera["id"],
+            schemas.CameraIn(
+                code=camera["code"], name=camera["name"], purpose=camera["purpose"],
+                env_name=camera["env_name"], rtsp_url="rtsp://u:p@10.0.0.9:554/lane2",
+            ),
+        )
+        generated = build_files(self.conn, self.settings)
+        services = applier.affected_services(self.conn, self.settings, generated, baseline)
+        self.assertEqual({"out_gate1"}, services["detector"])
+
+    def test_every_site_maps_to_a_gate_service(self):
+        services = compose_services(self.settings, self.settings.detector_compose_file)
+        mapping = site_service_names(services)
+        self.assertEqual("in_gate1", mapping["in_gate1_lane1"])
+        self.assertEqual("in_gate1", mapping["in_gate1_lane2"])
+        self.assertEqual("out_gate1", mapping["out_gate1_lane1"])
+        self.assertEqual("out_gate1", mapping["out_gate1_lane2"])
+
+    def test_validation_rejects_site_no_service_runs(self):
+        compose = self.root / "compose.yaml"
+        text = compose.read_text(encoding="utf-8")
+        compose.write_text(
+            text.replace('      - "--site"\n      - "/app/config/sites/out_gate1_lane2.json"\n', ""),
+            encoding="utf-8",
+        )
+        errors = validate_files(self.settings, build_files(self.conn, self.settings))
+        self.assertTrue(any("out_gate1_lane2" in error for error in errors), errors)
 
     def test_camera_url_change_restarts_services_using_it(self):
         baseline = build_files(self.conn, self.settings)
@@ -137,7 +206,7 @@ class ApplyTests(ProjectCase):
 
         from moda_ui import docker_ops
 
-        deployed = {"in_gate1_lane1", "weight_reader"}
+        deployed = {"in_gate1", "weight_reader"}
         calls: list[list[str]] = []
 
         def states(_settings, project):
@@ -177,7 +246,7 @@ class ApplyTests(ProjectCase):
         self._change_confidence()
         result = applier.apply(self.conn, self.settings, user_id=None, note="t")
         self.assertTrue(result["ok"], result)
-        self.assertEqual([["in_gate1_lane1"]], calls)
+        self.assertEqual([["in_gate1"]], calls)
         written = json.loads((self.root / "config/sites/in_gate1_lane1.json").read_text(encoding="utf-8"))
         self.assertEqual(0.42, written["vehicle_confidence"])
         self.assertEqual("applied", repo.list_revisions(self.conn)[0]["status"])
@@ -190,7 +259,7 @@ class ApplyTests(ProjectCase):
         result = applier.apply(self.conn, self.settings, user_id=None, note="t")
         self.assertFalse(result["ok"])
         self.assertEqual(before, (self.root / "config/sites/in_gate1_lane1.json").read_text(encoding="utf-8"))
-        self.assertEqual([["in_gate1_lane1"], ["in_gate1_lane1"]], calls)  # new config, then old again
+        self.assertEqual([["in_gate1"], ["in_gate1"]], calls)  # new config, then old again
         self.assertEqual("failed", repo.list_revisions(self.conn)[0]["status"])
 
     def test_invalid_config_is_rejected_before_writing(self):

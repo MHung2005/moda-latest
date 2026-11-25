@@ -67,14 +67,22 @@ Bản này chạy trên JetPack 6.2 (L4T R36.4). So với bản JetPack 5 / Deep
 
 ## Chạy detector DeepStream
 
-Mỗi Jetson chỉ nên khởi động detector mà nó phụ trách, ví dụ:
+Mỗi cổng chạy một container detector, gồm 2 lane là 2 pipeline DeepStream độc lập trong
+cùng một tiến trình (mỗi lane vẫn giữ model xe, tracker, vùng và watchdog riêng; dùng chung
+CUDA context và runtime để tiết kiệm RAM):
 
 ```bash
-docker compose up -d --build in_gate1_lane1
+docker compose up -d --build in_gate1 out_gate1
 ```
 
-Các detector hợp lệ là `in_gate1_lane1`, `in_gate1_lane2`, `out_gate1_lane1` và
-`out_gate1_lane2`. Model được mount read-only từ `./models` vào `/home/jetson/models`.
+| Service | Lane (site) |
+|---|---|
+| `in_gate1` | `in_gate1_lane1`, `in_gate1_lane2` |
+| `out_gate1` | `out_gate1_lane1`, `out_gate1_lane2` |
+
+Khi chuyển từ bố cục cũ (mỗi lane một service), thêm `--remove-orphans` để xoá 4 container cũ.
+Một lane lỗi (mất camera, ERROR) sẽ khiến cả container của cổng đó khởi động lại. Ảnh xe của
+mỗi lane vẫn nằm ở `runtime/vehicle/<lane>/`. Model được mount read-only từ `./models` vào `/home/jetson/models`.
 Engine TensorRT sinh từ ONNX được ghi riêng vào `runtime/engines`; lần chạy đầu có thể mất
 thêm thời gian để build engine, các lần sau dùng lại cache này.
 

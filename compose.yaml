@@ -7,6 +7,9 @@ x-traffic: &traffic
   init: true
   runtime: nvidia
   ipc: host
+  # CPU-side cap per gate (two lanes use < 1 GiB today). GPU/NVMM buffers on Jetson are
+  # not fully counted by the cgroup, so this guards against leaks, not GPU growth.
+  mem_limit: 2g
   depends_on:
     kafka:
       condition: service_healthy
@@ -63,53 +66,45 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  in_gate1_lane1:
+  # One detector container per gate: both lanes run as two independent DeepStream pipelines
+  # (own vehicle model, tracker, zones and watchdog) in one process, sharing the CUDA
+  # context and the TensorRT/DeepStream/Python runtime. A failing lane restarts its gate.
+  # Each lane writes images to /data/vehicle/<site> (traffic_core.cli.load_sites).
+  in_gate1:
     <<: *traffic
-    command: ["--site", "/app/config/sites/in_gate1_lane1.json"]
+    command:
+      - "--site"
+      - "/app/config/sites/in_gate1_lane1.json"
+      - "--site"
+      - "/app/config/sites/in_gate1_lane2.json"
     environment:
       <<: *runtime-environment
       MODA_IN_GATE1_LANE1_CAMERA_URL: ${MODA_IN_GATE1_LANE1_CAMERA_URL:-}
-    volumes:
-      - ./models:/home/jetson/models:ro
-      - ./config:/app/config:ro
-      - ./runtime/engines:/cache/engines
-      - ./runtime/vehicle/in_gate1_lane1:/data/vehicle
-
-  in_gate1_lane2:
-    <<: *traffic
-    command: ["--site", "/app/config/sites/in_gate1_lane2.json"]
-    environment:
-      <<: *runtime-environment
       MODA_IN_GATE1_LANE2_CAMERA_URL: ${MODA_IN_GATE1_LANE2_CAMERA_URL:-}
     volumes:
       - ./models:/home/jetson/models:ro
       - ./config:/app/config:ro
       - ./runtime/engines:/cache/engines
-      - ./runtime/vehicle/in_gate1_lane2:/data/vehicle
+      - ./runtime/vehicle/in_gate1_lane1:/data/vehicle/in_gate1_lane1
+      - ./runtime/vehicle/in_gate1_lane2:/data/vehicle/in_gate1_lane2
 
-  out_gate1_lane1:
+  out_gate1:
     <<: *traffic
-    command: ["--site", "/app/config/sites/out_gate1_lane1.json"]
+    command:
+      - "--site"
+      - "/app/config/sites/out_gate1_lane1.json"
+      - "--site"
+      - "/app/config/sites/out_gate1_lane2.json"
     environment:
       <<: *runtime-environment
       MODA_OUT_GATE1_LANE1_CAMERA_URL: ${MODA_OUT_GATE1_LANE1_CAMERA_URL:-}
-    volumes:
-      - ./models:/home/jetson/models:ro
-      - ./config:/app/config:ro
-      - ./runtime/engines:/cache/engines
-      - ./runtime/vehicle/out_gate1_lane1:/data/vehicle
-
-  out_gate1_lane2:
-    <<: *traffic
-    command: ["--site", "/app/config/sites/out_gate1_lane2.json"]
-    environment:
-      <<: *runtime-environment
       MODA_OUT_GATE1_LANE2_CAMERA_URL: ${MODA_OUT_GATE1_LANE2_CAMERA_URL:-}
     volumes:
       - ./models:/home/jetson/models:ro
       - ./config:/app/config:ro
       - ./runtime/engines:/cache/engines
-      - ./runtime/vehicle/out_gate1_lane2:/data/vehicle
+      - ./runtime/vehicle/out_gate1_lane1:/data/vehicle/out_gate1_lane1
+      - ./runtime/vehicle/out_gate1_lane2:/data/vehicle/out_gate1_lane2
 
 volumes:
   kafka_data:
