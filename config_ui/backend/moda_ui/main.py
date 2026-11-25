@@ -13,6 +13,7 @@ from . import live
 from . import repository as repo
 from .api import router
 from .db import connect, init_schema
+from .plate_check_api import router as plate_check_router
 from .results_api import router as results_router
 from .security import SecretKeyError
 from .settings import get_settings
@@ -49,6 +50,7 @@ def create_app() -> FastAPI:
 
     app.include_router(router)
     app.include_router(results_router)
+    app.include_router(plate_check_router)
 
     static_dir = settings.static_dir
     if static_dir and static_dir.exists():

@@ -21,6 +21,9 @@ x-traffic: &traffic
 
 x-runtime-environment: &runtime-environment
   MODA_KAFKA_BOOTSTRAP_SERVERS: ${MODA_KAFKA_BOOTSTRAP_SERVERS:?set MODA_KAFKA_BOOTSTRAP_SERVERS}
+  # Debug: keep every plate-reading frame of the last N vehicles per lane under
+  # runtime/vehicle/<lane>/frames/ (UI page "Kiểm tra đọc biển"). 0 disables.
+  MODA_FRAME_DUMP_KEEP: ${MODA_FRAME_DUMP_KEEP:-5}
 
 services:
   # Single-node KRaft broker shared by detectors, weight_reader and results_recorder.

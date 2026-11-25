@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import logging
@@ -20,6 +21,7 @@ from gi.repository import Gst
 from .config import SiteConfig
 from .events import build_vehicle_message
 from .fps import FpsCounter
+from .frame_dump import FrameDumpWriter, keep_vehicles_from_env
 from .geometry import contains_point
 from .kafka import create_producer, publish
 from .plate import (
@@ -110,6 +112,22 @@ class VehicleDetection(DeepStreamPipeline):
         self.inference_zones = {
             key: list(value) for key, value in site_config.inference_zones.items()
         }
+        # Debug side channel: every plate-reading frame of the last N vehicles of this lane
+        # (MODA_FRAME_DUMP_KEEP, 0 disables). Never affects the event flow.
+        self.frame_dump: FrameDumpWriter | None = None
+        keep_vehicles = keep_vehicles_from_env()
+        if keep_vehicles > 0:
+            try:
+                self.frame_dump = FrameDumpWriter(
+                    FilePath(self.vehicle_image_root) / "frames", keep_vehicles
+                )
+                logger.info(
+                    "[%s] Frame dump on: last %d vehicle(s) in %s/frames",
+                    site_config.name, keep_vehicles, self.vehicle_image_root,
+                )
+            except Exception:
+                logger.exception("[%s] Frame dump could not start; continuing without it", site_config.name)
+        self._frame_dump_error_logged_at = 0.0
 
     def _save_image_and_publish(
         self,
@@ -188,6 +206,78 @@ class VehicleDetection(DeepStreamPipeline):
         frame_copy = frame_copy[:, :, :-1]
         frame_copy = frame_copy[:, :, ::-1]
         return np.array(frame_copy)
+
+    @staticmethod
+    def _get_vehicle_crop(gst_buffer, frame_meta, box, margin=0.05):
+        """Copy only the vehicle box (plus a margin) of the frame, as BGR."""
+        n_frame = pyds.get_nvds_buf_surface(hash(gst_buffer), frame_meta.batch_id)
+        try:
+            height, width = n_frame.shape[:2]
+            x1, y1, x2, y2 = box
+            pad_x = int((x2 - x1) * margin)
+            pad_y = int((y2 - y1) * margin)
+            x1, x2 = max(0, x1 - pad_x), min(width, x2 + pad_x)
+            y1, y2 = max(0, y1 - pad_y), min(height, y2 + pad_y)
+            if x2 <= x1 or y2 <= y1:
+                return None
+            crop = np.array(n_frame[y1:y2, x1:x2, :3], copy=True, order="C")
+        finally:
+            if platform.machine() == "aarch64":
+                pyds.unmap_nvds_buf_surface(hash(gst_buffer), frame_meta.batch_id)
+        return np.ascontiguousarray(crop[:, :, ::-1])
+
+    def _dump_frame(self, state, vehicle, gst_buffer, frame_meta, *, valid_plate, in_capture_zone):
+        """Hand this frame to the debug frame dump; errors are logged, never raised."""
+        try:
+            section_state = state
+            if state.active_reentry_id is not None:
+                section_state = self.tracks.get(
+                    TrackKey(int(frame_meta.source_id), state.active_reentry_id)
+                ) or state
+            crop = self._get_vehicle_crop(gst_buffer, frame_meta, vehicle.box)
+            if crop is None:
+                return
+            self.frame_dump.submit(
+                section_state.section_id,
+                crop,
+                {
+                    "frame_num": int(frame_meta.frame_num),
+                    "ts": self._utc_timestamp(),
+                    "object_id": vehicle.object_id,
+                    "plate_label": vehicle.plate_label,
+                    "plate_confidences": [round(float(c), 3) for c in vehicle.plate_confidences],
+                    "valid_plate": bool(valid_plate),
+                    "in_capture_zone": bool(in_capture_zone),
+                    "vehicle_confidence": round(float(vehicle.confidence), 3),
+                    "box": list(vehicle.box),
+                },
+            )
+        except Exception:
+            now = time.time()
+            if now - self._frame_dump_error_logged_at >= 60:
+                self._frame_dump_error_logged_at = now
+                logger.exception("[%s] Frame dump failed (ignored)", self.label)
+
+    def _finish_frame_dump(self, key, state, *, plate_number, best_match, match_score, requires_search, message):
+        try:
+            self.frame_dump.finish(
+                state.section_id,
+                {
+                    "section_id": state.section_id,
+                    "trigger_code": self.trigger_codes[key.source_id],
+                    "plate": plate_number,
+                    "raw_plate": state.raw_plate,
+                    "best_match": best_match,
+                    "match_score": match_score,
+                    "requires_search": bool(requires_search),
+                    "capture_frame": state.capture_frame,
+                    "captured_at": state.captured_at,
+                    "image_path": message.get("trigger_image") if isinstance(message, dict) else None,
+                    "plate_votes": dict(Counter(state.plate_values).most_common()),
+                },
+            )
+        except Exception:
+            logger.exception("[%s] Frame dump summary failed (ignored)", self.label)
 
     @staticmethod
     def _is_inside_polygon(point, polygon):
@@ -354,6 +444,14 @@ class VehicleDetection(DeepStreamPipeline):
             center_foot,
             self.capture_zones[source_id],
         )
+        if self.frame_dump is not None and self._is_inside_polygon(
+            center_foot,
+            self.inference_zones[source_id],
+        ):
+            self._dump_frame(
+                state, vehicle, gst_buffer, frame_meta,
+                valid_plate=valid_plate, in_capture_zone=is_inside,
+            )
         if is_inside:
             if not state.has_capture:
                 state.record_capture(
@@ -413,7 +511,7 @@ class VehicleDetection(DeepStreamPipeline):
                 self.reference_license_plates,
             )
 
-        self._save_image_and_publish(
+        message = self._save_image_and_publish(
             key,
             state,
             plate_number=best_plate,
@@ -421,6 +519,12 @@ class VehicleDetection(DeepStreamPipeline):
             match_score=score,
             requires_search=requires_search,
         )
+        if self.frame_dump is not None:
+            self._finish_frame_dump(
+                key, state,
+                plate_number=best_plate, best_match=best_match, match_score=score,
+                requires_search=requires_search, message=message,
+            )
 
         original_key = state.parent_key
         if original_key is not None:
@@ -508,6 +612,11 @@ class VehicleDetection(DeepStreamPipeline):
             self.producer.close(timeout=10)
         except Exception as error:
             logger.error("[%s] Failed to close Kafka producer: %s", self.label, error)
+        if self.frame_dump is not None:
+            try:
+                self.frame_dump.close()
+            except Exception as error:
+                logger.error("[%s] Failed to close frame dump: %s", self.label, error)
 
 
 def run_detections(detections: list[VehicleDetection]) -> None:

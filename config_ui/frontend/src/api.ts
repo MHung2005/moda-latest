@@ -206,6 +206,50 @@ export interface ResultFilter {
   page_size?: number;
 }
 
+export interface PlateCheckSummary {
+  trigger_code?: string;
+  plate?: string | null;
+  raw_plate?: string | null;
+  best_match?: string | null;
+  match_score?: number | null;
+  requires_search?: boolean;
+  capture_frame?: number | null;
+  captured_at?: string | number | null;
+  image_path?: string | null;
+  plate_votes?: Record<string, number>;
+}
+
+export interface PlateCheckVehicle {
+  section_id: string;
+  summary: PlateCheckSummary | null;
+  capture_image_path: string | null;
+  frame_count: number;
+  valid_frame_count: number;
+  first_ts: number | string | null;
+  last_ts: number | string | null;
+  updated_at: number;
+}
+
+export interface PlateCheckFrame {
+  frame_num: number | null;
+  ts: number | string | null;
+  plate_label: string | null;
+  plate_confidences: number[] | null;
+  valid_plate: boolean;
+  in_capture_zone: boolean;
+  vehicle_confidence: number | null;
+  box: number[] | null;
+  image_path: string | null;
+}
+
+export interface PlateCheckDetail {
+  lane: string;
+  section_id: string;
+  summary: PlateCheckSummary | null;
+  capture_image_path: string | null;
+  frames: PlateCheckFrame[];
+}
+
 function query(params: object): string {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
@@ -324,6 +368,10 @@ export const api = {
   resultLanes: () => get<string[]>("/results/lanes"),
   resultImageUrl: (path: string, width?: number) =>
     `/api/results/image${query({ path, w: width })}`,
+
+  plateCheck: () => get<{ lanes: { lane: string; vehicles: PlateCheckVehicle[] }[] }>("/plate-check"),
+  plateCheckVehicle: (lane: string, sectionId: string) =>
+    get<PlateCheckDetail>(`/plate-check/${encodeURIComponent(lane)}/${encodeURIComponent(sectionId)}`),
 
   services: () => get<ServiceState[]>("/services"),
   serviceLogs: (project: string, service: string) => get<string>(`/services/${project}/${service}/logs?tail=200`),
